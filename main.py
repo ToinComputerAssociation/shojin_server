@@ -80,7 +80,15 @@ def point_calculation(submission, difficultiy):
     rate = 0
     basic_point = 1000
     return basic_point * pow(2, (difficultiy - rate) / 400)
-	
+
+
+def pushGithub():
+    os.system('git add .')
+    os.system(f'git config --global user.email "{os.environ["EMAIL"]}"')
+    os.system('git config --global user.name "strawberry29"')
+    os.system('git commit -m "update"')
+    os.system('git push origin main')
+
 submissions = getSubmissionData("strawberry0929")
 newestSubmits = collectNewestAcceptedSubmissions(submissions)
 login_atcoder()
@@ -94,9 +102,6 @@ while len(firstAC_submissions) != 0:
     submission = firstAC_submissions.popleft()
     difficultiy = difficulties[submission['problem_id']]['difficulty']
     print(difficultiy, point_calculation(submission, difficultiy))
-os.system('git add .')
-os.system(f'git config --global user.email "{os.environ["EMAIL"]}"')
-os.system('git config --global user.name "strawberry29"')
-os.system('git commit -m "update"')
-os.system('git push origin main')
+pushGithub()
+
 
