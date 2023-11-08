@@ -97,6 +97,6 @@ while len(firstAC_submissions) != 0:
 os.system('git add .')
 os.system(f'git config --global user.email "{os.environ["EMAIL"]}"')
 os.system('git config --global user.name "strawberry29"')
-os.system('git commit -m "add newfile and some fixes"')
+os.system('git commit -m "update"')
 os.system('git push origin main')
 
