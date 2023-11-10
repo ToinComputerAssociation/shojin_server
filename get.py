@@ -6,10 +6,14 @@ import shoujin
 import json
 import asyncio
 users = {}
-b = shoujin.user("strawberry0929", "strawberry")
-b.score = 100
-users["strawberry0929"] = b
+b = shoujin.user("blueberry1001", "blueberry")
+b.score = 0
 users = shoujin.json_.load_user_data()
-shoujin.init.all()
+users[b.id] = b
+shoujin.main.init()
 submissions = asyncio.run(shoujin.get.submission_data(users))
-print([submission.user_id for submission in submissions])
+for submission in submissions:
+    point = asyncio.run(shoujin.get.point(submission))
+    users[submission.user_id].score += point
+    print(f"{submission.user_id} get {point} point!")
+shoujin.json_.save_user_data(users)

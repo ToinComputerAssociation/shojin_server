@@ -5,11 +5,16 @@ from bs4 import BeautifulSoup
 import os
 import asyncio
 
-class init:
+class main:
     
     @classmethod    
-    def all(cls):
+    def init(cls):
         get.login_atcoder()
+        main.update()
+
+    @classmethod    
+    def update(cls):
+        get.all_difficulties()
         
 class user:
     
@@ -27,10 +32,26 @@ class submission:
         self.contest_id = contest_id
         self.user_id = user_id
 
+class time:
+
+    time_path = "time.json"
+    
+    @classmethod
+    def save(cls, time):
+        file = open(cls.time_path, 'w')
+        json.dump({"time" : time}, file)
+        
+    @classmethod    
+    def load(cls):
+        file = open(cls.time_path , 'r')
+        jsonData = json.load(file)
+        return jsonData["time"]
+        
 
 class get:
     
     session = requests.session()
+    difficulties = {}
     
     @classmethod
     def login_atcoder(cls):#atcoderにログイン
@@ -52,6 +73,29 @@ class get:
         # 2. ログインページで認証を行い、管理者ページへ遷移する
         req_after_login = cls.session.post(url_login, data=login_data)
 
+    #Atcoder Problemsからdifficultiyを取得
+    @classmethod
+    def all_difficulties(cls):
+        api_url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
+        response = requests.get(api_url)
+        jsonData = response.json()
+        cls.difficulties = jsonData
+
+    #user_idの現在のレートを取得
+    @classmethod
+    def rating(cls, user_id):
+        response = requests.get(f"https://atcoder.jp/users/{user_id}/history/json")
+        jsonData = response.json()
+        return jsonData[-1]["NewRating"]
+
+    #submissionで得られる得点を計算
+    @classmethod
+    async def point(cls, submission):
+        difficultiy = cls.difficulties.get(submission.problem_id, {}).get('difficulty', 400)
+        rate = get.rating(submission.user_id)
+        basic_point = 1000
+        return basic_point * pow(2, (difficultiy - rate) / 400)
+
     @classmethod
     async def submission_data(cls, users):
         submissions = []
@@ -64,7 +108,8 @@ class get:
                 if get.isFirstAC(submission):
                     submissions.append(submission)
         return submissions
-        
+
+    # APIを用いた提出データの取得
     @classmethod
     def all_submissions_data(cls, user_id):
         unix_second = 1699206101
@@ -73,6 +118,7 @@ class get:
         jsonData = response.json()
         return jsonData
 
+    # 各問題において最も新しいAC提出のみを取得する
     @classmethod
     def collectNewestAcceptedSubmissions(cls, submissions):
         submits = {}  # 各問題ごとに最新の提出に更新する
@@ -82,6 +128,7 @@ class get:
             submits[data["problem_id"]] = submission(data["id"], data["problem_id"], data["contest_id"], data["user_id"])
         return submits
 
+    #初めてのACか判定
     @classmethod
     def isFirstAC(cls, submission):
         url = f"https://atcoder.jp/contests/{submission.contest_id}/submissions?f.Task={submission.problem_id}&f.LanguageName=&f.Status=AC&f.User={submission.user_id}"
@@ -98,16 +145,16 @@ class json_:
     @classmethod
     def save_user_data(cls, users):
         file = open(cls.user_data_path, 'w')
-        json.dump(users, file, cls=user_encoder)
+        json.dump(users, file, cls=encoder)
         
     @classmethod    
     def load_user_data(cls):
         file = open(cls.user_data_path , 'r')
-        jsonData = json.load(file, cls=user_decoder)
+        jsonData = json.load(file, cls=decoder)
         return jsonData
 
 
-class user_encoder(json.JSONEncoder):
+class encoder(json.JSONEncoder):
     
     def default(self, o):
         if isinstance(o, user):
@@ -115,7 +162,7 @@ class user_encoder(json.JSONEncoder):
         return json.JSONEncoder.default(self, o)
 
 
-class user_decoder(json.JSONDecoder):
+class decoder(json.JSONDecoder):
     
     def __init__(self, *args, **kwargs):
         json.JSONDecoder.__init__(self, object_hook=self.object_hook,
@@ -127,3 +174,6 @@ class user_decoder(json.JSONDecoder):
         type = o['_type']
         if type == 'user':
             return user(**o['value'])
+        if type == 'submission':
+            return user(**o['value'])
+			
