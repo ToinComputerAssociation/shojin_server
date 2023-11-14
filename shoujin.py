@@ -116,7 +116,7 @@ class get:
             newest_submissions = get.collectNewestAcceptedSubmissions(all_submissions)
             for submission in newest_submissions.values():
                 await asyncio.sleep(1)
-                if not get.isFirstAC(submission):
+                if get.isFirstAC(submission):
                     submissions.append(submission)
         return submissions
 

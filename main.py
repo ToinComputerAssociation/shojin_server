@@ -48,10 +48,11 @@ def pushGitHub():
     os.system('git push origin main')
 
 
-@tasks.loop(seconds=60)
+@tasks.loop(seconds=600)
 async def loop():
     await update_score()
     print("update")
+    
     
 keep_alive()
 TOKEN = os.environ["DISCORD_TOKEN"]
