@@ -32,6 +32,10 @@ class submission:
         self.contest_id = contest_id
         self.user_id = user_id
 
+    @property
+    def difficultiy(self):
+        return get.difficultiy(self)
+
 class time:
 
     time_path = "time.json"
@@ -45,7 +49,7 @@ class time:
     def load(cls):
         file = open(cls.time_path , 'r')
         jsonData = json.load(file)
-        return jsonData["time"]
+        return int(jsonData["time"])
         
 
 class get:
@@ -87,7 +91,13 @@ class get:
         response = requests.get(f"https://atcoder.jp/users/{user_id}/history/json")
         jsonData = response.json()
         return jsonData[-1]["NewRating"]
-
+        
+    #submissionのdifficultyを取得
+    @classmethod
+    def difficultiy(cls, submission):
+        difficultiy = cls.difficulties.get(submission.problem_id, {}).get('difficulty', 400)
+        return difficultiy
+        
     #submissionで得られる得点を計算
     @classmethod
     async def point(cls, submission):
@@ -96,23 +106,23 @@ class get:
         basic_point = 1000
         return basic_point * pow(2, (difficultiy - rate) / 400)
 
+    #有効な提出を取得
     @classmethod
-    async def submission_data(cls, users):
+    async def submission_data(cls, users, unix_second):
         submissions = []
         for user in users.values():
             await asyncio.sleep(1)
-            all_submissions = get.all_submissions_data(user.id)
+            all_submissions = get.all_submissions_data(user.id, unix_second)
             newest_submissions = get.collectNewestAcceptedSubmissions(all_submissions)
             for submission in newest_submissions.values():
                 await asyncio.sleep(1)
-                if get.isFirstAC(submission):
+                if not get.isFirstAC(submission):
                     submissions.append(submission)
         return submissions
 
     # APIを用いた提出データの取得
     @classmethod
-    def all_submissions_data(cls, user_id):
-        unix_second = 1699206101
+    def all_submissions_data(cls, user_id, unix_second):
         api_url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unix_second}"
         response = requests.get(api_url)
         jsonData = response.json()

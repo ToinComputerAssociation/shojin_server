@@ -8,6 +8,8 @@ authors = ["Your Name <you@example.com>"]
 python = ">=3.10.0,<3.11"
 requests = "^2.31.0"
 bs4 = "^0.0.1"
+discord = "^2.3.2"
+flask = "^3.0.0"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
