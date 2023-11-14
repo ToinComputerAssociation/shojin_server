@@ -26,11 +26,12 @@ shoujin.main.init()
 async def update_score():
     shoujin.main.update()
     unix_second = shoujin.time.load()
-    shoujin.time.save(time.time())
     submissions = await shoujin.get.submission_data(users, unix_second)    
     for submission in submissions:
         point = await shoujin.get.point(submission)
         users[submission.user_id].score += point
+        if shoujin.time.load() < submission.epoch_second + 1:
+            shoujin.time.save(submission.epoch_second + 1)
         print(f"{submission.user_id} get {point} point!")
         channel = client.get_channel(CHANNEL_ID)
         await channel.send(f"{submission.user_id}が{submission.problem_id}(diff:{submission.difficultiy})をACしました！")

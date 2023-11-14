@@ -26,11 +26,12 @@ class user:
 
 class submission:
     
-    def __init__(self, id, problem_id, contest_id, user_id):
-        self.id = id
-        self.problem_id = problem_id
-        self.contest_id = contest_id
-        self.user_id = user_id
+    def __init__(self, submission):
+        self.id = submission["id"]
+        self.epoch_second = submission["epoch_second"]
+        self.problem_id = submission["problem_id"]
+        self.contest_id = submission["contest_id"]
+        self.user_id = submission["user_id"]
 
     @property
     def difficultiy(self):
@@ -135,7 +136,7 @@ class get:
         for data in submissions:
             if data["result"] != "AC":  # ACだった提出だけ対象
                 continue
-            submits[data["problem_id"]] = submission(data["id"], data["problem_id"], data["contest_id"], data["user_id"])
+            submits[data["problem_id"]] = submission(data)
         return submits
 
     #初めてのACか判定
