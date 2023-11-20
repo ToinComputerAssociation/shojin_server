@@ -15,6 +15,9 @@ intents.message_content = True
 bot = commands.Bot(intents=intents, command_prefix="shojin.")
 
 
+bot.owner_ids = [866659388122202162, 693025129806037003]  # あとで消す
+
+
 @bot.event
 async def on_ready():
     await bot.load_extension("jishaku")

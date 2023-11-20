@@ -1,9 +1,9 @@
 import discord
 from discord.ext import commands, tasks
 import json
-from urllib import request
+#from urllib import request
 import requests
-from bs4 import BeautifulSoup
+#from bs4 import BeautifulSoup
 import os
 import asyncio
 
@@ -15,7 +15,7 @@ class MyCog(commands.Cog):
     @tasks.loop(seconds=600)
     async def loop():
         print("start update")
-        await update_score()
+        #await update_score()
         print("end update")
 
 
