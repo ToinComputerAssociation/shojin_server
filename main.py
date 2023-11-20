@@ -7,7 +7,6 @@ from discord import app_commands
 from discord.ext import tasks
 from keep_alive import keep_alive
 
-
 client = discord.Client(intents=discord.Intents.default())
 tree = app_commands.CommandTree(client)
 
@@ -34,11 +33,10 @@ async def update_score():
             shoujin.time.save(submission.epoch_second + 1)
         print(f"{submission.user_id} get {point} point!")
         channel = client.get_channel(CHANNEL_ID)
-        await channel.send(f"{submission.user_id}が{submission.problem_id}(diff:{submission.difficultiy})をACしました！")
-        await channel.send(f"score:{users[submission.user_id].score - point} -> {users[submission.user_id].score}(+{point})")
+        await channel.send(f"{submission.user_id}が{submission.problem_id}(diff:{submission.difficultiy})をACしました！\nscore:{round(users[submission.user_id].score - point, 3)} -> {round(users[submission.user_id].score, 3)}(+{round(point, 3)})")
     shoujin.json_.save_user_data(users)
     await asyncio.sleep(5)
-    pushGitHub()
+    #pushGitHub()
     
 #GitHubに保存
 def pushGitHub():
@@ -51,15 +49,13 @@ def pushGitHub():
 
 @tasks.loop(seconds=600)
 async def loop():
+    print("start update")
     await update_score()
-    print("update")
+    print("end update")
     
     
 keep_alive()
 TOKEN = os.environ["DISCORD_TOKEN"]
-try:
-    client.run(TOKEN)
-except:
-    os.system("kill 1")
+client.run(TOKEN)
 
 
