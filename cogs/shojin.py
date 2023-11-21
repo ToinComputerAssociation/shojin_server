@@ -1,5 +1,7 @@
 import discord
 from discord.ext import commands, tasks
+import aiohttp
+
 import json
 from urllib import request
 import requests
@@ -9,14 +11,44 @@ import asyncio
 
 
 class MyCog(commands.Cog):
+    problems_json: dict
+    
     def __init__(self, bot) -> None:
         self.bot = bot
-    
+
+    async def cog_load(self):
+        "コグのロード時の動作"
+        await self.get_problems_json()
+        await self.get_all_submissions()
+        self.score_calc.start()
+
+    async def cog_unload(self):
+        "コグのアンロード時の動作"
+        self.score_calc.cancel()
+
+    async def get_problems_data(self):
+        "Atcoder Problems APIから全問題のdifficultyなどのデータを取得する。"
+        url = "https://kenkoooo.com/atcoder/resources/problems.json"
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            self.problems_json = await (await session.get(url)).json()
+        url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            difficulties = await (await session.get(url)).json()
+        raise NotImplimentedError("実装途中")
+
+    async def get_all_submissions(self):
+        "対象ユーザーの全提出データを取得する。"
+        pass
+
     @tasks.loop(seconds=600)
-    async def loop():
+    async def score_calc():
         print("start update")
         await update_score()
         print("end update")
+
+
+async def setup(bot):
+    await bot.add_cog(MyCog(bot))
 
 
 class main:
