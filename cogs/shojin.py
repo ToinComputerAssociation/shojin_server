@@ -34,7 +34,8 @@ class MyCog(commands.Cog):
         url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             difficulties = await (await session.get(url)).json()
-        raise NotImplimentedError("実装途中")
+        for k, v in difficulties.items():
+            self.problems_json[k].update(v)
 
     async def get_all_submissions(self):
         "対象ユーザーの全提出データを取得する。"
