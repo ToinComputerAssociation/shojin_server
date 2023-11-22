@@ -10,7 +10,7 @@ import os
 import asyncio
 
 
-class MyCog(commands.Cog):
+class Shojin(commands.Cog):
     problems_json: dict
     
     def __init__(self, bot) -> None:
@@ -19,7 +19,7 @@ class MyCog(commands.Cog):
     async def cog_load(self):
         "コグのロード時の動作"
         await self.get_problems_json()
-        await self.get_all_submissions()
+        await self.update_all_submissions()
         self.score_calc.start()
 
     async def cog_unload(self):
@@ -28,18 +28,19 @@ class MyCog(commands.Cog):
 
     async def get_problems_data(self):
         "Atcoder Problems APIから全問題のdifficultyなどのデータを取得する。"
-        url = "https://kenkoooo.com/atcoder/resources/problems.json"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = "https://kenkoooo.com/atcoder/resources/problems.json"
             self.problems_json = await (await session.get(url)).json()
-        url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
-        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
             difficulties = await (await session.get(url)).json()
-        for k, v in difficulties.items():
-            self.problems_json[k].update(v)
+            for k, v in difficulties.items():
+                self.problems_json[k].update(v)
 
-    async def get_all_submissions(self):
+    async def _get_all_submissions(self, user_id: str):
         "対象ユーザーの全提出データを取得する。"
-        pass
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = ""
+            return await (await session.get(url)).json()
 
     @tasks.loop(seconds=600)
     async def score_calc():
@@ -49,7 +50,7 @@ class MyCog(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(MyCog(bot))
+    await bot.add_cog(Shojin(bot))
 
 
 class main:
