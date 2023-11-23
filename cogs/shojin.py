@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 import aiohttp
+from typing import TypedDict, NotRequired
 
 import json
 from urllib import request
@@ -10,8 +11,24 @@ import os
 import asyncio
 
 
+class Problem(TypedDict):
+    id: str
+    contest_id: str
+    problem_index: str
+    name: str
+    title: str
+    slope: NotRequired[float]
+    intercept: NotRequired[float]
+    variance: NotRequired[float]
+    difficulty: NotRequired[int]
+    discrimination: NotRequired[float]
+    irt_loglikelihood: NotRequired[float]
+    irt_users: NotRequired[int]
+    is_experimental: bool
+
+
 class Shojin(commands.Cog):
-    problems_json: dict
+    problems_json: dict[str, Problem]
     
     def __init__(self, bot) -> None:
         self.bot = bot
@@ -30,7 +47,7 @@ class Shojin(commands.Cog):
         "Atcoder Problems APIから全問題のdifficultyなどのデータを取得する。"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             url = "https://kenkoooo.com/atcoder/resources/problems.json"
-            self.problems_json = await (await session.get(url)).json()
+            self.problems_json = {i["id"]: i for i in (await (await session.get(url)).json())}
             url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
             difficulties = await (await session.get(url)).json()
             for k, v in difficulties.items():
@@ -39,8 +56,20 @@ class Shojin(commands.Cog):
     async def _get_all_submissions(self, user_id: str):
         "対象ユーザーの全提出データを取得する。"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            url = ""
+            url = f"https://kenkoooo.com/atcoder/atcoder-api/results?user={user_id}"
             return await (await session.get(url)).json()
+
+    async def update_all_submissions(self):
+        "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
+        pass
+
+    async def user_score_update(self, user, problem):
+        "指定されたユーザーのスコアを加算し、通知する。"
+        pass
+
+    def get_score(self, user_rate, problem_diff):
+        "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
+        return 1000 * pow(2, (problem_diff - user_rate) / 400)
 
     @tasks.loop(seconds=600)
     async def score_calc():
