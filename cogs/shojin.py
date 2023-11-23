@@ -3,7 +3,7 @@ from discord.ext import commands, tasks
 import aiohttp
 from typing import TypedDict, NotRequired
 
-import json
+import orjson
 from urllib import request
 import requests
 from bs4 import BeautifulSoup
@@ -35,6 +35,10 @@ class Shojin(commands.Cog):
 
     async def cog_load(self):
         "コグのロード時の動作"
+        with open("data/scores.json", mode="r") as f:
+            self.users = orjson.load(f)
+        with open("data/submissions.json", mode="r") as f:
+            self.submissions = orjson.load(f)
         await self.get_problems_json()
         await self.update_all_submissions()
         self.score_calc.start()
@@ -61,7 +65,9 @@ class Shojin(commands.Cog):
 
     async def update_all_submissions(self):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
-        pass
+        for user_id in self.users.keys():
+            if user_id not in self.submissions:
+                pass
 
     async def user_score_update(self, user, problem):
         "指定されたユーザーのスコアを加算し、通知する。"
