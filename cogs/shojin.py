@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 import aiohttp
 from typing import TypedDict, NotRequired
+import datetime
 
 import orjson
 from urllib import request
@@ -27,9 +28,15 @@ class Problem(TypedDict):
     is_experimental: bool
 
 
+class User(TypedDict):
+    score: float
+    rating: int
+
+
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
-    
+    NOTICE_CHANNEL_ID = 1173817847294734349
+
     def __init__(self, bot) -> None:
         self.bot = bot
 
@@ -66,22 +73,44 @@ class Shojin(commands.Cog):
     async def update_all_submissions(self):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
         for user_id in self.users.keys():
+            all_subs = await self._get_all_submissions(user_id)
+            all_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
             if user_id not in self.submissions:
                 pass
 
-    async def user_score_update(self, user, problem):
+    async def user_score_update(self, user_id, problem_id):
         "指定されたユーザーのスコアを加算し、通知する。"
-        pass
+        channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
+        assert isinstance(channel, discord.TextChannel)
+        diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+        contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
+        rate = self.users[user_id]["rating"]
+        point = self.get_score(rate, diff)
+        before = self.users[user_id]["score"]
+        self.users[user_id]["score"] += point
+        await channel.send(
+            f"{user_id}が[{problem_id}](https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}) (diff:{diff})をACしました！\n"
+            f"score:{round(before, 3)} -> {round(before + point, 3)}(+{round(point, 3)})"
+        )
 
     def get_score(self, user_rate, problem_diff):
         "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
         return 1000 * pow(2, (problem_diff - user_rate) / 400)
 
     @tasks.loop(seconds=600)
-    async def score_calc():
+    async def score_calc(self):
         print("start update")
         #await update_score()
         print("end update")
+
+    @tasks.loop(time=datetime.time(15, 0))
+    async def update_rating(self):
+        print("update users rating...")
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = "https://us-central1-atcoderusersapi.cloudfunctions.net/api/info/username/"
+            for user_id in self.users.keys():
+                data = await (await session.get(url + user_id)).json()
+                self.users[user_id]["rating"] = data["data"]["rating"]
 
 
 async def setup(bot):
