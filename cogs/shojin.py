@@ -1,22 +1,91 @@
 import discord
 from discord.ext import commands, tasks
-import json
-#from urllib import request
+import aiohttp
+from typing import TypedDict, NotRequired
+
+import orjson
+from urllib import request
 import requests
 #from bs4 import BeautifulSoup
 import os
 import asyncio
 
 
-class MyCog(commands.Cog):
+class Problem(TypedDict):
+    id: str
+    contest_id: str
+    problem_index: str
+    name: str
+    title: str
+    slope: NotRequired[float]
+    intercept: NotRequired[float]
+    variance: NotRequired[float]
+    difficulty: NotRequired[int]
+    discrimination: NotRequired[float]
+    irt_loglikelihood: NotRequired[float]
+    irt_users: NotRequired[int]
+    is_experimental: bool
+
+
+class Shojin(commands.Cog):
+    problems_json: dict[str, Problem]
+    
     def __init__(self, bot) -> None:
         self.bot = bot
-    
+
+    async def cog_load(self):
+        "コグのロード時の動作"
+        with open("data/scores.json", mode="r") as f:
+            self.users = orjson.load(f)
+        with open("data/submissions.json", mode="r") as f:
+            self.submissions = orjson.load(f)
+        await self.get_problems_json()
+        await self.update_all_submissions()
+        self.score_calc.start()
+
+    async def cog_unload(self):
+        "コグのアンロード時の動作"
+        self.score_calc.cancel()
+
+    async def get_problems_data(self):
+        "Atcoder Problems APIから全問題のdifficultyなどのデータを取得する。"
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = "https://kenkoooo.com/atcoder/resources/problems.json"
+            self.problems_json = {i["id"]: i for i in (await (await session.get(url)).json())}
+            url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
+            difficulties = await (await session.get(url)).json()
+            for k, v in difficulties.items():
+                self.problems_json[k].update(v)
+
+    async def _get_all_submissions(self, user_id: str):
+        "対象ユーザーの全提出データを取得する。"
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = f"https://kenkoooo.com/atcoder/atcoder-api/results?user={user_id}"
+            return await (await session.get(url)).json()
+
+    async def update_all_submissions(self):
+        "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
+        for user_id in self.users.keys():
+            if user_id not in self.submissions:
+                pass
+
+    async def user_score_update(self, user, problem):
+        "指定されたユーザーのスコアを加算し、通知する。"
+        pass
+
+    def get_score(self, user_rate, problem_diff):
+        "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
+        return 1000 * pow(2, (problem_diff - user_rate) / 400)
+
     @tasks.loop(seconds=600)
-    async def loop():
+    async def score_calc():
         print("start update")
         #await update_score()
         print("end update")
+
+
+async def setup(bot):
+    await bot.add_cog(Shojin(bot))
 
 
 class main:
