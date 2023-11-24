@@ -31,10 +31,12 @@ class Problem(TypedDict):
 class User(TypedDict):
     score: float
     rating: int
+    discord_id: int
 
 
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
+    users: dict[str, User]
     NOTICE_CHANNEL_ID = 1173817847294734349
 
     def __init__(self, bot) -> None:
@@ -46,13 +48,16 @@ class Shojin(commands.Cog):
             self.users = orjson.load(f)
         with open("data/submissions.json", mode="r") as f:
             self.submissions = orjson.load(f)
-        await self.get_problems_json()
+        await self.get_problems_data()
         await self.update_all_submissions()
         self.score_calc.start()
+        await self.update_rating()
+        self.update_rating.start()
 
     async def cog_unload(self):
         "コグのアンロード時の動作"
         self.score_calc.cancel()
+        self.update_rating.cancel()
 
     async def get_problems_data(self):
         "Atcoder Problems APIから全問題のdifficultyなどのデータを取得する。"
@@ -74,23 +79,41 @@ class Shojin(commands.Cog):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
         for user_id in self.users.keys():
             all_subs = await self._get_all_submissions(user_id)
-            all_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
+            all_ac_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
+            all_ac_problems = set([i["problem_id"] for i in all_ac_subs])
             if user_id not in self.submissions:
-                pass
+                self.submissions[user_id] = {k: k in all_ac_problems for k in self.problems_json.keys()}
+                continue
 
-    async def user_score_update(self, user_id, problem_id):
+            new_ac = []
+            for problem_id in all_ac_problems:
+                if not self.submissions[user_id][problem_id]:
+                    new_ac.append(problem_id)
+                    self.submissions[user_id][problem_id] = True
+            # 点数更新&通知
+            await self.user_score_update(user_id, *new_ac)
+
+    async def user_score_update(self, user_id, *problems):
         "指定されたユーザーのスコアを加算し、通知する。"
         channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
         assert isinstance(channel, discord.TextChannel)
-        diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
-        contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
+
+        if not problems:
+            return False
+
         rate = self.users[user_id]["rating"]
-        point = self.get_score(rate, diff)
         before = self.users[user_id]["score"]
-        self.users[user_id]["score"] += point
+        messages = []
+        for problem_id in problems:
+            diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+            contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
+            point = self.get_score(rate, diff)
+            self.users[user_id]["score"] += point
+            messages.append(f"[{problem_id}](https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}) (diff:{diff})")
+        after = self.users[user_id]["score"]
         await channel.send(
-            f"{user_id}が[{problem_id}](https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}) (diff:{diff})をACしました！\n"
-            f"score:{round(before, 3)} -> {round(before + point, 3)}(+{round(point, 3)})"
+            f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
+            f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
         )
 
     def get_score(self, user_rate, problem_diff):
@@ -99,9 +122,8 @@ class Shojin(commands.Cog):
 
     @tasks.loop(seconds=600)
     async def score_calc(self):
-        print("start update")
-        #await update_score()
-        print("end update")
+        # スコア更新の判定をする。
+        pass
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
