@@ -48,10 +48,12 @@ class Shojin(commands.Cog):
             self.users = orjson.load(f)
         with open("data/submissions.json", mode="r") as f:
             self.submissions = orjson.load(f)
+        with open("data/users.json", mode="r") as f:
+            self.users = orjson.load(f)
         await self.get_problems_data()
         await self.update_all_submissions()
-        self.score_calc.start()
         await self.update_rating()
+        self.score_calc.start()
         self.update_rating.start()
 
     async def cog_unload(self):
