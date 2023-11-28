@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 import aiohttp
 from typing import TypedDict, NotRequired
 import datetime
+import time
 
 import orjson
 from urllib import request
@@ -48,8 +49,6 @@ class Shojin(commands.Cog):
             self.users = orjson.load(f)
         with open("data/submissions.json", mode="r") as f:
             self.submissions = orjson.load(f)
-        with open("data/users.json", mode="r") as f:
-            self.users = orjson.load(f)
         await self.get_problems_data()
         await self.update_all_submissions()
         await self.update_rating()
@@ -77,23 +76,37 @@ class Shojin(commands.Cog):
             url = f"https://kenkoooo.com/atcoder/atcoder-api/results?user={user_id}"
             return await (await session.get(url)).json()
 
+    async def _get_20_minutes_submissions(self, user_id: str):
+        "対象ユーザーの直近20分の提出の取得を行う。"
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            unixtime = time.time() - 1200
+            url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unixtime}"
+            return await (await session.get(url)).json()
+
     async def update_all_submissions(self):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
         for user_id in self.users.keys():
-            all_subs = await self._get_all_submissions(user_id)
-            all_ac_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
-            all_ac_problems = set([i["problem_id"] for i in all_ac_subs])
-            if user_id not in self.submissions:
-                self.submissions[user_id] = {k: k in all_ac_problems for k in self.problems_json.keys()}
-                continue
-
-            new_ac = []
-            for problem_id in all_ac_problems:
-                if not self.submissions[user_id][problem_id]:
-                    new_ac.append(problem_id)
-                    self.submissions[user_id][problem_id] = True
+            new_ac = await self.update_user_submissions(user_id)
             # 点数更新&通知
-            await self.user_score_update(user_id, *new_ac)
+            if new_ac:
+                await self.user_score_update(user_id, *new_ac)
+
+    async def update_user_submissions(self, user_id: str) -> list[str]:
+        "指定されたユーザーのデータを全取得して、新規ACの更新をする。"
+        all_subs = await self._get_all_submissions(user_id)
+        all_ac_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
+        all_ac_problems = set([i["problem_id"] for i in all_ac_subs])
+        if user_id not in self.submissions:
+            self.submissions[user_id] = {k: k in all_ac_problems for k in self.problems_json.keys()}
+            return False
+
+        new_ac = []
+        for problem_id in all_ac_problems:
+            if not self.submissions[user_id][problem_id]:
+                new_ac.append(problem_id)
+                self.submissions[user_id][problem_id] = True
+        # 新規ACを返す
+        return new_ac
 
     async def user_score_update(self, user_id, *problems):
         "指定されたユーザーのスコアを加算し、通知する。"
@@ -122,10 +135,30 @@ class Shojin(commands.Cog):
         "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
         return 1000 * pow(2, (problem_diff - user_rate) / 400)
 
+    @commands.command(aliases=["re"])
+    async def register(self, ctx: commands.Context, user_id: str):
+        if user_id in self.users:
+            return await ctx.reply("このAtCoderユーザーは登録済みです。")
+        async with aiohttp.ClientSession(loop=self.bot.loop) as session:
+            url = f"https://us-central1-atcoderusersapi.cloudfunctions.net/api/info/username/{user_id}"
+
+        self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": 0}
+        await self.update_user_submissions(user_id)
+        await ctx.reply("登録しました。")
+
     @tasks.loop(seconds=600)
     async def score_calc(self):
         # スコア更新の判定をする。
-        pass
+        for user_id in self.users.keys():
+            submissions = await self._get_20_minutes_submissions(user_id)
+            new_ac = []
+            for sub in submissions:
+                if sub["result"] == "AC":
+                    if not self.submissions[user_id][sub["problem_id"]]:
+                        # First AC
+                        self.submissions[user_id][sub["problem_id"]] = True
+                        new_ac.append(sub["problem_id"])
+            await self.user_score_update(user_id, *new_ac)
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
