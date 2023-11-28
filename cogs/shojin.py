@@ -65,6 +65,8 @@ class Shojin(commands.Cog):
             for k, v in difficulties.items():
                 if self.problems_json.get(k):
                     self.problems_json[k].update(v)
+                else:
+                    self.problems_json[k] = v
 
     async def _get_all_submissions(self, user_id: str):
         "対象ユーザーの全提出データを取得する。"
@@ -75,7 +77,7 @@ class Shojin(commands.Cog):
     async def _get_20_minutes_submissions(self, user_id: str):
         "対象ユーザーの直近20分の提出の取得を行う。"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            unixtime = time.time() - 1200
+            unixtime = int(time.time() - 1200)
             url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unixtime}"
             return await (await session.get(url)).json()
 
@@ -98,7 +100,7 @@ class Shojin(commands.Cog):
 
         new_ac = []
         for problem_id in all_ac_problems:
-            if not self.submissions[user_id][problem_id]:
+            if not self.submissions[user_id].get(problem_id, False):
                 new_ac.append(problem_id)
                 self.submissions[user_id][problem_id] = True
         # 新規ACを返す
@@ -120,7 +122,7 @@ class Shojin(commands.Cog):
             contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
             point = self.get_score(rate, diff)
             self.users[user_id]["score"] += point
-            messages.append(f"[{problem_id}](https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}) (diff:{diff})")
+            messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
         after = self.users[user_id]["score"]
         await channel.send(
             f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
@@ -142,9 +144,9 @@ class Shojin(commands.Cog):
         if user_id in self.users:
             return await ctx.reply("このAtCoderユーザーは登録済みです。")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            url = f""
+            rating = await self.get_rating(user_id, session)
 
-        self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": 0}
+        self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating}
         await self.update_user_submissions(user_id)
         await ctx.reply("登録しました。")
 
