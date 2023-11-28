@@ -63,7 +63,8 @@ class Shojin(commands.Cog):
             url = "https://kenkoooo.com/atcoder/resources/problem-models.json"
             difficulties = await (await session.get(url)).json()
             for k, v in difficulties.items():
-                self.problems_json[k].update(v)
+                if self.problems_json.get(k):
+                    self.problems_json[k].update(v)
 
     async def _get_all_submissions(self, user_id: str):
         "対象ユーザーの全提出データを取得する。"
@@ -126,6 +127,12 @@ class Shojin(commands.Cog):
             f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
         )
 
+    async def get_rating(self, user_id, session):
+        "ユーザーのレートを取得する。(AtCoderのサイトにアクセスする。)"
+        response = await session.get(f"https://atcoder.jp/users/{user_id}/history/json")
+        jsonData = await response.json()
+        return jsonData[-1]["NewRating"]
+
     def get_score(self, user_rate, problem_diff):
         "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
         return 1000 * pow(2, (problem_diff - user_rate) / 400)
@@ -135,7 +142,7 @@ class Shojin(commands.Cog):
         if user_id in self.users:
             return await ctx.reply("このAtCoderユーザーは登録済みです。")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            url = f"https://us-central1-atcoderusersapi.cloudfunctions.net/api/info/username/{user_id}"
+            url = f""
 
         self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": 0}
         await self.update_user_submissions(user_id)
@@ -159,10 +166,9 @@ class Shojin(commands.Cog):
     async def update_rating(self):
         print("update users rating...")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            url = "https://us-central1-atcoderusersapi.cloudfunctions.net/api/info/username/"
             for user_id in self.users.keys():
-                data = await (await session.get(url + user_id)).json()
-                self.users[user_id]["rating"] = data["data"]["rating"]
+                rating = await self.get_rating(user_id, session)
+                self.users[user_id]["rating"] = rating
         print("Saving Data...")
         with open("data/submissions.json", mode="w") as f:
             json.dump(self.submissions, f)
