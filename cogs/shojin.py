@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import aiohttp
 from typing import TypedDict, NotRequired
 import datetime
@@ -124,7 +125,7 @@ class Shojin(commands.Cog):
             self.users[user_id]["score"] += point
             messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
         after = self.users[user_id]["score"]
-        await channel.send(
+        return await channel.send(
             f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
             f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
         )
@@ -139,7 +140,8 @@ class Shojin(commands.Cog):
         "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
         return 1000 * pow(2, (problem_diff - user_rate) / 400)
 
-    @commands.command(aliases=["re"])
+    @commands.hybrid_command(aliases=["re"], description="精進通知をオンにします。")
+    @app_commands.describe(user_id="AtCoderのユーザーID")
     async def register(self, ctx: commands.Context, user_id: str):
         if user_id in self.users:
             return await ctx.reply("このAtCoderユーザーは登録済みです。")
@@ -149,6 +151,20 @@ class Shojin(commands.Cog):
         self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating}
         await self.update_user_submissions(user_id)
         await ctx.reply("登録しました。")
+
+    @commands.hybrid_command(description="現在のスコアを確認します。")
+    async def status(self, ctx: commands.Context):
+        for user_id in self.users.keys():
+            if self.users[user_id]["discord_id"] == ctx.author.id:
+                break
+        else:
+            return await ctx.send(
+                "あなたはユーザー登録をしていません。`shojin.register <AtCoderユーザーID>`で登録してください。"
+            )
+        await ctx.send(
+            f"{ctx.author.mention}のデータ\nAtCoder ID：{user_id}\nbot内で保存されている"
+            f"レーティング：{self.users[user_id]['rating']}\nスコア：{self.users[user_id]['score']}"
+        )
 
     @tasks.loop(seconds=600)
     async def score_calc(self):
