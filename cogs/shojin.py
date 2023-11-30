@@ -119,6 +119,8 @@ class Shojin(commands.Cog):
         before = self.users[user_id]["score"]
         messages = []
         for problem_id in problems:
+            if "ahc" in problem_id:
+                continue
             diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
             contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
             point = self.get_score(rate, diff)
@@ -174,7 +176,7 @@ class Shojin(commands.Cog):
             new_ac = []
             for sub in submissions:
                 if sub["result"] == "AC":
-                    if not self.submissions[user_id][sub["problem_id"]]:
+                    if not self.submissions[user_id].get(sub["problem_id"], False):
                         # First AC
                         self.submissions[user_id][sub["problem_id"]] = True
                         new_ac.append(sub["problem_id"])
