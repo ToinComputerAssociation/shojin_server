@@ -5,7 +5,7 @@ import aiohttp
 from typing import TypedDict, NotRequired
 import datetime
 import time
-
+import os
 import json
 
 
@@ -168,6 +168,11 @@ class Shojin(commands.Cog):
             f"レーティング：{self.users[user_id]['rating']}\nスコア：{self.users[user_id]['score']}"
         )
 
+    @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
+    async def ranking(self, ctx: commands.Context, rank=1):
+        rank -= 1
+        await ctx.send("開発中")
+
     @tasks.loop(seconds=600)
     async def score_calc(self):
         # スコア更新の判定をする。
@@ -189,11 +194,26 @@ class Shojin(commands.Cog):
             for user_id in self.users.keys():
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
+        await self.save_data()
+
+    async def save_data(self):
         print("Saving Data...")
         with open("data/submissions.json", mode="w") as f:
             json.dump(self.submissions, f)
         with open("data/scores.json", mode="w") as f:
             json.dump(self.users, f)
+        # バックアップをとる。
+        today = datetime.date.today()
+        with open(f"data/backup/{today.strftime('YYYYMMDD')}.json", mode="w") as f:
+            json.dump(self.submissions, f)
+        with open(f"data/backup/{today.strftime('YYYYMMDD')}_users.json", mode="w") as f:
+            json.dump(self.users, f)
+        weekago = today - datetime.timedelta(days=7)
+        # 7日で自動削除
+        if os.path.isfile(f"data/backup/{weekago.strftime('YYYYMMDD')}.json"):
+            os.remove(f"data/backup/{weekago.strftime('YYYYMMDD')}.json")
+        if os.path.isfile(f"data/backup/{weekago.strftime('YYYYMMDD')}_users.json"):
+            os.remove(f"data/backup/{weekago.strftime('YYYYMMDD')}_users.json")
 
 
 async def setup(bot):
