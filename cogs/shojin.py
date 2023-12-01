@@ -197,9 +197,9 @@ class Shojin(commands.Cog):
         )
 
     @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
-    async def ranking(self, ctx: commands.Context, rank = "1"):
+    async def ranking(self, ctx: commands.Context, rank: str = "1"):
         points = [(user_id, self.users[user_id]["score"]) for user_id in self.users.keys()]
-        points.sort(key=lambda i: i[1], reversed=True)
+        points.sort(key=lambda i: i[1], reverse=True)
         if not rank.isdigit():
             if not self.users.get(rank, False):
                 return await ctx.send("このユーザーは登録されていません。")
@@ -214,12 +214,12 @@ class Shojin(commands.Cog):
                 if points[i][0] == user_id:
                     rank = i
         else:
-            rank = max(rank, len(points)-4) - 1
+            rank = min(int(rank), len(points)-4) - 1
         messages = []
-        for i in range(5):
+        for i in range(min(5, len(self.users)-rank)):
             now = rank + i
             messages.append(
-                f"{now+1}位：{points[now][0]} (score: {points[now][1]:.3f})"
+                f"{now+1}位：**`{points[now][0]}`** (score: `{points[now][1]:.3f}`)"
             )
         await ctx.send("\n".join(messages))
 
