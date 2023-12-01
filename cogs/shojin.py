@@ -178,6 +178,15 @@ class Shojin(commands.Cog):
         rank -= 1
         await ctx.send("開発中")
 
+    @commands.hybrid_group(description="設定の変更をします。")
+    async def settings(self, ctx: commands.Context):
+        if not ctx.invoked_subcommand:
+            await ctx.send("あなたの設定状況\n- 再ACの通知：オフ")
+
+    @settings.command(description="再ACの通知のオンオフを切り替えます")
+    async def renotif(self, ctx: commands.Context, onoff: bool):
+        await ctx.send("開発中")
+
     @tasks.loop(seconds=600)
     async def score_calc(self):
         # スコア更新の判定をする。
