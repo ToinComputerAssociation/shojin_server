@@ -25,19 +25,27 @@ class Problem(TypedDict):
     is_experimental: bool
 
 
+class Settings(TypedDict):
+    renotif: bool
+
+
 class User(TypedDict):
     score: float
     rating: int
     discord_id: int
+    settings: Settings
 
 
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
     users: dict[str, User]
     NOTICE_CHANNEL_ID = 1173817847294734349
+    SHOULD_REGISTER_MESSAGE = ("あなたはユーザー登録をしていません。\n"
+    "`shojin.register <AtCoderユーザーID>`で登録してください。")
 
     def __init__(self, bot) -> None:
         self.bot = bot
+        self.ten_minute_count = 0
 
     async def cog_load(self):
         "コグのロード時の動作"
@@ -109,13 +117,13 @@ class Shojin(commands.Cog):
         # 新規ACを返す
         return new_ac
 
-    async def user_score_update(self, user_id, problems):
+    async def user_score_update(self, user_id, problems, re_ac_problems=[]):
         "指定されたユーザーのスコアを加算し、通知する。"
         channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
         assert isinstance(channel, discord.TextChannel)
 
         if not problems:
-            return False
+            return
 
         rate = self.users[user_id]["rating"]
         before = self.users[user_id]["score"]
@@ -129,9 +137,21 @@ class Shojin(commands.Cog):
             self.users[user_id]["score"] += point
             messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
         after = self.users[user_id]["score"]
-        return await channel.send(
+        await channel.send(
             f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
             f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
+        )
+        if not re_ac_problems:
+            return
+        points = 0
+        for problem_id in re_ac_problems:
+            diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+            contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
+            points += self.get_score(rate, diff)
+            messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
+        await channel.send(
+            f"{user_id}(rate:{rate})が{', '.join(messages)}を再ACしました！\n"
+            f"(想定獲得スコア：{points})"
         )
 
     async def get_rating(self, user_id, session):
@@ -144,6 +164,12 @@ class Shojin(commands.Cog):
         "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
         return 1000 * pow(2, (problem_diff - user_rate) / 400)
 
+    def get_user_from_discord(self, discord_id: int):
+        for user_id in self.users.keys():
+            if self.users[user_id]["discord_id"] == discord_id:
+                return user_id
+        return False
+
     @commands.hybrid_command(aliases=["re"], description="精進通知をオンにします。")
     @app_commands.describe(user_id="AtCoderのユーザーID")
     async def register(self, ctx: commands.Context, user_id: str):
@@ -153,20 +179,17 @@ class Shojin(commands.Cog):
             rating = await self.get_rating(user_id, session)
 
         self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating}
+        self.users[user_id]["settings"] = Settings({"renotif": False})
         await self.update_user_submissions(user_id)
         await ctx.reply("登録しました。")
 
     @commands.hybrid_command(description="現在のスコアを確認します。")
     async def status(self, ctx: commands.Context, user: discord.User = commands.Author):
-        for user_id in self.users.keys():
-            if self.users[user_id]["discord_id"] == user.id:
-                break
-        else:
+        user_id = self.get_user_from_discord(user.id)
+        if not user_id:
             if user != ctx.author:
                 return await ctx.send("この人はユーザー登録をしていません。")
-            return await ctx.send(
-                "あなたはユーザー登録をしていません。`shojin.register <AtCoderユーザーID>`で登録してください。"
-            )
+            return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
         await ctx.send(
             f"{user.mention}のデータ\nAtCoder ID：{user_id}\nbot内で保存されている"
             f"レーティング：{self.users[user_id]['rating']}\nスコア：{self.users[user_id]['score']}",
@@ -174,18 +197,52 @@ class Shojin(commands.Cog):
         )
 
     @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
-    async def ranking(self, ctx: commands.Context, rank=1):
-        rank -= 1
-        await ctx.send("開発中")
+    async def ranking(self, ctx: commands.Context, rank = "1"):
+        points = [(user_id, self.users[user_id]["score"]) for user_id in self.users.keys()]
+        points.sort(key=lambda i: i[1], reversed=True)
+        if not rank.isdigit():
+            if not self.users.get(rank, False):
+                return await ctx.send("このユーザーは登録されていません。")
+            for i in range(len(points)):
+                if points[i][0] == rank:
+                    rank = i
+        elif int(rank) < 1:
+            user_id = self.get_user_from_discord(ctx.author.id)
+            if not user_id:
+                return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
+            for i in range(len(points)):
+                if points[i][0] == user_id:
+                    rank = i
+        else:
+            rank = max(rank, len(points)-4) - 1
+        messages = []
+        for i in range(5):
+            now = rank + i
+            messages.append(
+                f"{now+1}位：{points[now][0]} (score: {points[now][1]:.3f})"
+            )
+        await ctx.send("\n".join(messages))
 
     @commands.hybrid_group(description="設定の変更をします。")
     async def settings(self, ctx: commands.Context):
         if not ctx.invoked_subcommand:
-            await ctx.send("あなたの設定状況\n- 再ACの通知：オフ")
+            user_id = self.get_user_from_discord(ctx.author.id)
+            if not user_id:
+                return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
+            t = ["オフ", "オン"][int(self.users[user_id]["settings"]["renotif"])]
+            await ctx.send("あなたの設定状況\n- 再ACの通知(`shojin.settings renotif`)：" + t)
 
     @settings.command(description="再ACの通知のオンオフを切り替えます")
-    async def renotif(self, ctx: commands.Context, onoff: bool):
-        await ctx.send("開発中")
+    async def renotif(self, ctx: commands.Context, onoff: bool | None = None):
+        user_id = self.get_user_from_discord(ctx.author.id)
+        if not user_id:
+            return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
+        if onoff is None:
+            self.users[user_id]["settings"]["renotif"] = not self.users[user_id]["settings"]["renotif"]
+        else:
+            self.users[user_id]["settings"]["renotif"] = onoff
+        t = ["オフ", "オン"][int(self.users[user_id]["settings"]["renotif"])]
+        await ctx.send(f"`{t}`に設定しました。")
 
     @tasks.loop(seconds=600)
     async def score_calc(self):
