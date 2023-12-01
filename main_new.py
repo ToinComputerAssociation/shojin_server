@@ -1,6 +1,6 @@
 import traceback
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
 import dotenv
 
@@ -12,7 +12,10 @@ dotenv.load_dotenv()
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(intents=intents, command_prefix="shojin.")
+bot = commands.Bot(
+    intents=intents, command_prefix="shojin.",
+    allowed_mentions=discord.AllowedMentions.none()
+)
 
 
 bot.owner_ids = [866659388122202162, 693025129806037003]  # あとで消す

@@ -45,6 +45,7 @@ class Shojin(commands.Cog):
             self.users = json.load(f)
         with open("data/submissions.json", mode="r") as f:
             self.submissions = json.load(f)
+        print("Getting all submissions and update...")
         await self.get_problems_data()
         await self.update_all_submissions()
         await self.update_rating()
@@ -55,6 +56,7 @@ class Shojin(commands.Cog):
         "コグのアンロード時の動作"
         self.score_calc.cancel()
         self.update_rating.cancel()
+        self.save_data()
 
     async def get_problems_data(self):
         "Atcoder Problems APIから全問題のdifficultyなどのデータを取得する。"
@@ -75,10 +77,10 @@ class Shojin(commands.Cog):
             url = f"https://kenkoooo.com/atcoder/atcoder-api/results?user={user_id}"
             return await (await session.get(url)).json()
 
-    async def _get_20_minutes_submissions(self, user_id: str):
-        "対象ユーザーの直近20分の提出の取得を行う。"
+    async def _get_30_minutes_submissions(self, user_id: str):
+        "対象ユーザーの直近30分の提出の取得を行う。"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            unixtime = int(time.time() - 1200)
+            unixtime = int(time.time() - 1800)
             url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unixtime}"
             return await (await session.get(url)).json()
 
@@ -88,7 +90,7 @@ class Shojin(commands.Cog):
             new_ac = await self.update_user_submissions(user_id)
             # 点数更新&通知
             if new_ac:
-                await self.user_score_update(user_id, *new_ac)
+                await self.user_score_update(user_id, new_ac)
 
     async def update_user_submissions(self, user_id: str) -> list[str]:
         "指定されたユーザーのデータを全取得して、新規ACの更新をする。"
@@ -107,7 +109,7 @@ class Shojin(commands.Cog):
         # 新規ACを返す
         return new_ac
 
-    async def user_score_update(self, user_id, *problems):
+    async def user_score_update(self, user_id, problems):
         "指定されたユーザーのスコアを加算し、通知する。"
         channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
         assert isinstance(channel, discord.TextChannel)
@@ -155,17 +157,20 @@ class Shojin(commands.Cog):
         await ctx.reply("登録しました。")
 
     @commands.hybrid_command(description="現在のスコアを確認します。")
-    async def status(self, ctx: commands.Context):
+    async def status(self, ctx: commands.Context, user: discord.User = commands.Author):
         for user_id in self.users.keys():
-            if self.users[user_id]["discord_id"] == ctx.author.id:
+            if self.users[user_id]["discord_id"] == user.id:
                 break
         else:
+            if user != ctx.author:
+                return await ctx.send("この人はユーザー登録をしていません。")
             return await ctx.send(
                 "あなたはユーザー登録をしていません。`shojin.register <AtCoderユーザーID>`で登録してください。"
             )
         await ctx.send(
-            f"{ctx.author.mention}のデータ\nAtCoder ID：{user_id}\nbot内で保存されている"
-            f"レーティング：{self.users[user_id]['rating']}\nスコア：{self.users[user_id]['score']}"
+            f"{user.mention}のデータ\nAtCoder ID：{user_id}\nbot内で保存されている"
+            f"レーティング：{self.users[user_id]['rating']}\nスコア：{self.users[user_id]['score']}",
+            allowed_mentions=discord.AllowedMentions.none()
         )
 
     @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
@@ -177,7 +182,7 @@ class Shojin(commands.Cog):
     async def score_calc(self):
         # スコア更新の判定をする。
         for user_id in self.users.keys():
-            submissions = await self._get_20_minutes_submissions(user_id)
+            submissions = await self._get_30_minutes_submissions(user_id)
             new_ac = []
             for sub in submissions:
                 if sub["result"] == "AC":
@@ -185,7 +190,7 @@ class Shojin(commands.Cog):
                         # First AC
                         self.submissions[user_id][sub["problem_id"]] = True
                         new_ac.append(sub["problem_id"])
-            await self.user_score_update(user_id, *new_ac)
+            await self.user_score_update(user_id, new_ac)
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
@@ -194,9 +199,9 @@ class Shojin(commands.Cog):
             for user_id in self.users.keys():
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
-        await self.save_data()
+        self.save_data()
 
-    async def save_data(self):
+    def save_data(self):
         print("Saving Data...")
         with open("data/submissions.json", mode="w") as f:
             json.dump(self.submissions, f)
@@ -204,16 +209,16 @@ class Shojin(commands.Cog):
             json.dump(self.users, f)
         # バックアップをとる。
         today = datetime.date.today()
-        with open(f"data/backup/{today.strftime('YYYYMMDD')}.json", mode="w") as f:
+        with open(f"data/backup/{today.strftime(r'%Y%m%d')}.json", mode="w") as f:
             json.dump(self.submissions, f)
-        with open(f"data/backup/{today.strftime('YYYYMMDD')}_users.json", mode="w") as f:
+        with open(f"data/backup/{today.strftime(r'%Y%m%d')}_users.json", mode="w") as f:
             json.dump(self.users, f)
         weekago = today - datetime.timedelta(days=7)
         # 7日で自動削除
-        if os.path.isfile(f"data/backup/{weekago.strftime('YYYYMMDD')}.json"):
-            os.remove(f"data/backup/{weekago.strftime('YYYYMMDD')}.json")
-        if os.path.isfile(f"data/backup/{weekago.strftime('YYYYMMDD')}_users.json"):
-            os.remove(f"data/backup/{weekago.strftime('YYYYMMDD')}_users.json")
+        if os.path.isfile(f"data/backup/{weekago.strftime(r'%Y%m%d')}.json"):
+            os.remove(f"data/backup/{weekago.strftime(r'%Y%m%d')}.json")
+        if os.path.isfile(f"data/backup/{weekago.strftime(r'%Y%m%d')}_users.json"):
+            os.remove(f"data/backup/{weekago.strftime(r'%Y%m%d')}_users.json")
 
 
 async def setup(bot):
