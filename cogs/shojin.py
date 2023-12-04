@@ -36,6 +36,27 @@ class User(TypedDict):
     settings: Settings
 
 
+class ReNotifCache:
+    def __init__(self, submit_ids: list[str]):
+        self.submit_ids = {submit_id: time.time() for submit_id in submit_ids}
+
+    @tasks.loop(seconds=1)
+    async def garbage_collection(self):
+        "再ACを確認してから30分以上経ったものを削除する。"
+        for k, v in self.submit_ids.items():
+            if time.time() - v > 1800:
+                del self.submit_ids[k]
+
+    def append(self, item: str) -> None:
+        self.submit_ids[item] = time.time()
+
+    def __repr__(self) -> str:
+        return f"<ReNotifCache submit_ids={self.submit_ids}>"
+
+    def get(self, item):
+        return self.submit_ids.get(item, False)
+
+
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
     users: dict[str, User]
@@ -45,7 +66,7 @@ class Shojin(commands.Cog):
 
     def __init__(self, bot) -> None:
         self.bot = bot
-        self.ten_minute_count = 0
+        self.renotifcache = ReNotifCache([])
 
     async def cog_load(self):
         "コグのロード時の動作"
@@ -57,6 +78,13 @@ class Shojin(commands.Cog):
         await self.get_problems_data()
         await self.update_all_submissions()
         await self.update_rating()
+        # 再AC通知のかぶり防止のため全ユーザーの直近30分のAC記録をキャッシュにぶち込んでおく
+        for user_id in self.users.keys():
+            submits = await self._get_30_minutes_submissions(user_id)
+            for i in submits:
+                if i["result"] == "AC":
+                    self.renotifcache.append(i["id"])
+
         self.score_calc.start()
         self.update_rating.start()
 
@@ -250,13 +278,17 @@ class Shojin(commands.Cog):
         for user_id in self.users.keys():
             submissions = await self._get_30_minutes_submissions(user_id)
             new_ac = []
+            re_ac = set()
             for sub in submissions:
                 if sub["result"] == "AC":
                     if not self.submissions[user_id].get(sub["problem_id"], False):
                         # First AC
                         self.submissions[user_id][sub["problem_id"]] = True
                         new_ac.append(sub["problem_id"])
-            await self.user_score_update(user_id, new_ac)
+                    if self.users[user_id]["settings"]["renotif"] and not self.renotifcache.get(sub["id"]):
+                        re_ac.add(sub["problem_id"])
+                        self.renotifcache.append(sub["id"])
+            await self.user_score_update(user_id, new_ac, list(re_ac))
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
