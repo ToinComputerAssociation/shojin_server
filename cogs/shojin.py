@@ -37,7 +37,7 @@ class User(TypedDict):
 
 
 class ReNotifCache:
-    def __init__(self, submit_ids: list[str]):
+    def __init__(self, submit_ids: list[int]):
         self.submit_ids = {submit_id: time.time() for submit_id in submit_ids}
 
     @tasks.loop(seconds=1)
@@ -47,7 +47,7 @@ class ReNotifCache:
             if time.time() - v > 1800:
                 del self.submit_ids[k]
 
-    def append(self, item: str) -> None:
+    def append(self, item: int) -> None:
         self.submit_ids[item] = time.time()
 
     def __repr__(self) -> str:
@@ -150,37 +150,36 @@ class Shojin(commands.Cog):
         channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
         assert isinstance(channel, discord.TextChannel)
 
-        if not problems:
-            return
-
         rate = self.users[user_id]["rating"]
-        before = self.users[user_id]["score"]
-        messages = []
-        for problem_id in problems:
-            if "ahc" in problem_id:
-                continue
-            diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
-            contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
-            point = self.get_score(rate, diff)
-            self.users[user_id]["score"] += point
-            messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
-        after = self.users[user_id]["score"]
-        await channel.send(
-            f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
-            f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
-        )
-        if not re_ac_problems:
-            return
-        points = 0
-        for problem_id in re_ac_problems:
-            diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
-            contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
-            points += self.get_score(rate, diff)
-            messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
-        await channel.send(
-            f"{user_id}(rate:{rate})が{', '.join(messages)}を再ACしました！\n"
-            f"(想定獲得スコア：{points})"
-        )
+        if problems:
+            before = self.users[user_id]["score"]
+            messages = []
+            for problem_id in problems:
+                if "ahc" in problem_id:
+                    continue
+                diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+                contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
+                point = self.get_score(rate, diff)
+                self.users[user_id]["score"] += point
+                messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
+            after = self.users[user_id]["score"]
+            await channel.send(
+                f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
+                f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
+            )
+
+        if re_ac_problems:
+            messages = []
+            points = 0
+            for problem_id in re_ac_problems:
+                diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+                contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
+                points += self.get_score(rate, diff)
+                messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
+            await channel.send(
+                f"{user_id}(rate:{rate})が{', '.join(messages)}を再ACしました！\n"
+                f"(想定獲得スコア：{points:.3f})"
+            )
 
     async def get_rating(self, user_id, session):
         "ユーザーのレートを取得する。(AtCoderのサイトにアクセスする。)"
@@ -285,6 +284,7 @@ class Shojin(commands.Cog):
                         # First AC
                         self.submissions[user_id][sub["problem_id"]] = True
                         new_ac.append(sub["problem_id"])
+                        self.renotifcache.append(sub["id"])
                     if self.users[user_id]["settings"]["renotif"] and not self.renotifcache.get(sub["id"]):
                         re_ac.add(sub["problem_id"])
                         self.renotifcache.append(sub["id"])
