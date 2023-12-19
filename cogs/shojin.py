@@ -163,10 +163,11 @@ class Shojin(commands.Cog):
                 self.users[user_id]["score"] += point
                 messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
             after = self.users[user_id]["score"]
-            await channel.send(
-                f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\n"
-                f"score:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
-            )
+            content = f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
+            if len(content) > 4000:
+                await channel.send(f"{user_id}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
+            else:
+                await channel.send(content)
 
         if re_ac_problems:
             messages = []
