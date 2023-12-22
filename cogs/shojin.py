@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import aiohttp
+import asyncio
 from typing import TypedDict, NotRequired
 import datetime
 import time
@@ -34,6 +35,7 @@ class User(TypedDict):
     rating: int
     discord_id: int
     settings: Settings
+    solve_count: int
 
 
 class ReNotifCache:
@@ -142,6 +144,7 @@ class Shojin(commands.Cog):
             if not self.submissions[user_id].get(problem_id, False):
                 new_ac.append(problem_id)
                 self.submissions[user_id][problem_id] = True
+                self.users[user_id]["solve_count"] += 1
         # 新規ACを返す
         return new_ac
 
@@ -206,7 +209,7 @@ class Shojin(commands.Cog):
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             rating = await self.get_rating(user_id, session)
 
-        self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating}
+        self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating, "solve_count": 0}
         self.users[user_id]["settings"] = Settings({"renotif": False})
         await self.update_user_submissions(user_id)
         await ctx.reply("登録しました。")
@@ -220,7 +223,8 @@ class Shojin(commands.Cog):
             return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
         await ctx.send(
             f"{user.mention}のデータ\nAtCoder ID：{user_id}\nbot内で保存されている"
-            f"レーティング：{self.users[user_id]['rating']}\nスコア：{self.users[user_id]['score']}",
+            f"レーティング：{self.users[user_id]['rating']}\n(今シーズン)スコア：{self.users[user_id]['score']}"
+            f"\n(今シーズン)解いた問題数: {self.users[user_id]['solve_count']}",
             allowed_mentions=discord.AllowedMentions.none()
         )
 
@@ -284,6 +288,7 @@ class Shojin(commands.Cog):
                     if not self.submissions[user_id].get(sub["problem_id"], False):
                         # First AC
                         self.submissions[user_id][sub["problem_id"]] = True
+                        self.users[user_id]["solve_count"] += 1
                         new_ac.append(sub["problem_id"])
                         self.renotifcache.append(sub["id"])
                     if self.users[user_id]["settings"]["renotif"] and not self.renotifcache.get(sub["id"]):
@@ -298,6 +303,7 @@ class Shojin(commands.Cog):
             for user_id in self.users.keys():
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
+                await asyncio.sleep(5)
         self.save_data()
 
     def save_data(self):
