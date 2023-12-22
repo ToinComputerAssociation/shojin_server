@@ -39,6 +39,8 @@ class User(TypedDict):
 
 
 class ReNotifCache:
+    "再AC通知用に、一時的に提出のデータを保管するためのクラス"
+    
     def __init__(self, submit_ids: list[int]):
         self.submit_ids = {submit_id: time.time() for submit_id in submit_ids}
 
@@ -230,7 +232,10 @@ class Shojin(commands.Cog):
 
     @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
     async def ranking(self, ctx: commands.Context, rank: str = "1"):
-        points = [(user_id, self.users[user_id]["score"]) for user_id in self.users.keys()]
+        points = [
+            (user_id, self.users[user_id]["score"], self.users[user_id]["solve_count"])
+            for user_id in self.users.keys()
+        ]
         points.sort(key=lambda i: i[1], reverse=True)
         if not rank.isdigit():
             if not self.users.get(rank, False):
@@ -251,7 +256,7 @@ class Shojin(commands.Cog):
         for i in range(min(5, len(self.users)-rank)):
             now = rank + i
             messages.append(
-                f"{now+1}位：**`{points[now][0]}`** (score: `{points[now][1]:.3f}`)"
+                f"{now+1}位：**`{points[now][0]}`** (score: `{points[now][1]:.3f}` 解いた問題数: {points[now][2]})"
             )
         await ctx.send("\n".join(messages))
 
@@ -269,11 +274,10 @@ class Shojin(commands.Cog):
         user_id = self.get_user_from_discord(ctx.author.id)
         if not user_id:
             return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
-        if onoff is None:
-            self.users[user_id]["settings"]["renotif"] = not self.users[user_id]["settings"]["renotif"]
-        else:
-            self.users[user_id]["settings"]["renotif"] = onoff
-        t = ["オフ", "オン"][int(self.users[user_id]["settings"]["renotif"])]
+        if onoff is None:  # オンオフが指定されてなければ今の設定の反対にする
+            onoff = not self.users[user_id]["settings"]["renotif"]
+        self.users[user_id]["settings"]["renotif"] = onoff
+        t = ["オフ", "オン"][int(onoff)]
         await ctx.send(f"`{t}`に設定しました。")
 
     @tasks.loop(seconds=600)
