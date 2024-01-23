@@ -114,8 +114,17 @@ class Shojin(commands.Cog):
     async def _get_all_submissions(self, user_id: str):
         "対象ユーザーの全提出データを取得する。"
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            url = f"https://kenkoooo.com/atcoder/atcoder-api/results?user={user_id}"
-            return await (await session.get(url)).json()
+            unixtime = 0
+            all_submissions = []
+            while True:
+                url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unixtime}"
+                submissions = await (await session.get(url)).json()
+                all_submissions.extend(submissions)
+                if len(submissions) != 500:
+                    break
+                unixtime = submissions[-1]["epoch_second"]
+                await asyncio.sleep(3)
+            return all_submissions
 
     async def _get_30_minutes_submissions(self, user_id: str):
         "対象ユーザーの直近30分の提出の取得を行う。"
