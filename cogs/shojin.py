@@ -178,7 +178,7 @@ class Shojin(commands.Cog):
                 messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
             after = self.users[user_id]["score"]
             content = f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
-            if len(content) > 4000:
+            if len(content) > 2000:
                 await channel.send(f"{user_id}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
             else:
                 await channel.send(content)
