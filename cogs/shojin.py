@@ -137,6 +137,7 @@ class Shojin(commands.Cog):
 
     async def update_all_submissions(self):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
+        print("[log] fetching all submissions...")
         for user_id in self.users.keys():
             new_ac = await self.update_user_submissions(user_id)
             # 点数更新&通知
@@ -316,16 +317,17 @@ class Shojin(commands.Cog):
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
-        print("update users rating...")
+        print("[log] Update users rating...")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             for user_id in self.users.keys():
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
                 await asyncio.sleep(5)
+        self.update_all_submissions()
         self.save_data()
 
     def save_data(self):
-        print("Saving Data...")
+        print("[log] Saving Data...")
         with open("data/submissions.json", mode="w") as f:
             json.dump(self.submissions, f)
         with open("data/scores.json", mode="w") as f:
