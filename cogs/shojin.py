@@ -169,10 +169,11 @@ class Shojin(commands.Cog):
                 messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
             after = self.users[user_id]["score"]
             content = f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
-            if len(content) > 4000:
-                await channel.send(f"{user_id}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
-            else:
-                await channel.send(content)
+            if len(messages) != 0:
+                if len(content) > 4000:
+                    await channel.send(f"{user_id}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
+                else:
+                    await channel.send(content)
 
         if re_ac_problems:
             messages = []
@@ -182,10 +183,11 @@ class Shojin(commands.Cog):
                 contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
                 points += self.get_score(rate, diff)
                 messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
-            await channel.send(
-                f"{user_id}(rate:{rate})が{', '.join(messages)}を再ACしました！\n"
-                f"(想定獲得スコア：{points:.3f})"
-            )
+            if len(messages) != 0:
+                await channel.send(
+                    f"{user_id}(rate:{rate})が{', '.join(messages)}を再ACしました！\n"
+                    f"(想定獲得スコア：{points:.3f})"
+                )
 
     async def get_rating(self, user_id, session):
         "ユーザーのレートを取得する。(AtCoderのサイトにアクセスする。)"
