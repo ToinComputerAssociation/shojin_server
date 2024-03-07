@@ -325,7 +325,7 @@ class Shojin(commands.Cog):
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
                 await asyncio.sleep(5)
-        self.update_all_submissions()
+        await self.update_all_submissions()
         self.save_data()
 
     def save_data(self):
