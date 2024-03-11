@@ -78,6 +78,8 @@ class Shojin(commands.Cog):
             self.users = json.load(f)
         with open("data/submissions.json", mode="r") as f:
             self.submissions = json.load(f)
+        with open("data/last_allget_time.txt", mode="r") as f:
+            self.last_allget_time = int(f.read())
         print("Getting all submissions and update...")
         await self.get_problems_data()
         await self.update_all_submissions()
@@ -113,9 +115,18 @@ class Shojin(commands.Cog):
 
     async def _get_all_submissions(self, user_id: str):
         "対象ユーザーの全提出データを取得する。"
+        all_submissions = []
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            url = f"https://kenkoooo.com/atcoder/atcoder-api/results?user={user_id}"
-            return await (await session.get(url)).json()
+            unixtime = self.last_allget_time
+            while True:
+                url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unixtime}"
+                submissions = await (await session.get(url)).json()
+                all_submissions.extend(submissions)
+                if len(submissions) != 500:
+                    break
+                unixtime = submissions[-1]["epoch_second"]
+                await asyncio.sleep(3)
+        return all_submissions
 
     async def _get_30_minutes_submissions(self, user_id: str):
         "対象ユーザーの直近30分の提出の取得を行う。"
@@ -126,11 +137,15 @@ class Shojin(commands.Cog):
 
     async def update_all_submissions(self):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
+        print("[log] fetching all submissions...")
         for user_id in self.users.keys():
             new_ac = await self.update_user_submissions(user_id)
             # 点数更新&通知
             if new_ac:
                 await self.user_score_update(user_id, new_ac)
+        self.last_allget_time = int(time.time()) - 14400
+        with open("data/last_allget_time.txt", mode="w") as f:
+            f.write(str(self.last_allget_time))
 
     async def update_user_submissions(self, user_id: str) -> list[str]:
         "指定されたユーザーのデータを全取得して、新規ACの更新をする。"
@@ -170,7 +185,7 @@ class Shojin(commands.Cog):
             after = self.users[user_id]["score"]
             content = f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
             if len(messages) != 0:
-                if len(content) > 4000:
+                if len(content) > 2000:
                     await channel.send(f"{user_id}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
                 else:
                     await channel.send(content)
@@ -304,16 +319,17 @@ class Shojin(commands.Cog):
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
-        print("update users rating...")
+        print("[log] Update users rating...")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             for user_id in self.users.keys():
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
                 await asyncio.sleep(5)
+        await self.update_all_submissions()
         self.save_data()
 
     def save_data(self):
-        print("Saving Data...")
+        print("[log] Saving Data...")
         with open("data/submissions.json", mode="w") as f:
             json.dump(self.submissions, f)
         with open("data/scores.json", mode="w") as f:
