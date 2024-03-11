@@ -18,7 +18,11 @@ bot = commands.Bot(
 )
 
 
-bot.owner_ids = [866659388122202162, 693025129806037003]  # あとで消す
+bot.owner_ids = [
+    866659388122202162,  # strawberry
+    693025129806037003,  # yaakiyu
+    850297484965576754,  # blueberry
+]
 
 
 @bot.event
