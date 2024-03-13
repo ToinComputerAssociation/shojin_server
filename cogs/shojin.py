@@ -64,6 +64,7 @@ class ReNotifCache:
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
     users: dict[str, User]
+    diffdic: dict[str, int]
     NOTICE_CHANNEL_ID = 1173817847294734349
     SHOULD_REGISTER_MESSAGE = ("あなたはユーザー登録をしていません。\n"
     "`shojin.register <AtCoderユーザーID>`で登録してください。")
@@ -80,9 +81,9 @@ class Shojin(commands.Cog):
             self.submissions = json.load(f)
         with open("data/last_allget_time.txt", mode="r") as f:
             self.last_allget_time = int(f.read())
+        with open("data/difficulty_dictionary.json", mode="r") as f:
+            self.diffdic = json.load(f)
         print("Getting all submissions and update...")
-        await self.get_problems_data()
-        await self.update_all_submissions()
         await self.update_rating()
         # 再AC通知のかぶり防止のため全ユーザーの直近30分のAC記録をキャッシュにぶち込んでおく
         for user_id in self.users.keys():
@@ -113,11 +114,12 @@ class Shojin(commands.Cog):
                 else:
                     self.problems_json[k] = v
 
-    async def _get_all_submissions(self, user_id: str):
+    async def _get_all_submissions(self, user_id: str, unixtime: int | None = None):
         "対象ユーザーの全提出データを取得する。"
         all_submissions = []
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            unixtime = self.last_allget_time
+            if unixtime is None:
+                unixtime = self.last_allget_time
             while True:
                 url = f"https://kenkoooo.com/atcoder/atcoder-api/v3/user/submissions?user={user_id}&from_second={unixtime}"
                 submissions = await (await session.get(url)).json()
@@ -178,6 +180,8 @@ class Shojin(commands.Cog):
                 if "ahc" in problem_id:
                     continue
                 diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+                if diff == 400:
+                    diff = self.diffdic.get(problem_id, 400)
                 contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
                 point = self.get_score(rate, diff)
                 self.users[user_id]["score"] += point
@@ -306,6 +310,8 @@ class Shojin(commands.Cog):
             re_ac = set()
             for sub in submissions:
                 if sub["result"] == "AC":
+                    if sub["result"] not in self.problems_json:
+                        await self.get_problems_data()
                     if not self.submissions[user_id].get(sub["problem_id"], False):
                         # First AC
                         self.submissions[user_id][sub["problem_id"]] = True
@@ -325,6 +331,7 @@ class Shojin(commands.Cog):
                 rating = await self.get_rating(user_id, session)
                 self.users[user_id]["rating"] = rating
                 await asyncio.sleep(5)
+        await self.get_problems_data()
         await self.update_all_submissions()
         self.save_data()
 

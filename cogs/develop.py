@@ -1,4 +1,5 @@
 import discord
+import json
 from discord.ext import commands
 
 
@@ -21,6 +22,18 @@ class Develop(commands.Cog):
         after_score = cog.get_score(user_rate, after_diff)
         cog.users[user_id]["score"] += after_score
         await ctx.send(f"{user_id}のスコアを更新しました。\n{before} -> {cog.users[user_id]['score']} (-{before_score:.3f} +{after_score:.3f})")
+
+    @commands.command()
+    async def diffdic(self, ctx: commands.Context, problem_id: str, diff: int):
+        "特定の問題のdifficultyを登録します。"
+        with open("data/difficulty_dictionary.json", mode="r") as f:
+            diffdic = json.load(f)
+        diffdic[problem_id] = diff
+        with open("data/difficulty_dictionary.json", mode="w") as f:
+            json.dump(diffdic, f)
+        cog = self.bot.cog["Shojin"]
+        cog.diffdic[problem_id] = diff
+        await ctx.send(f"問題 {problem_id} にdiff {diff} を設定しました。")
 
 
 async def setup(bot):
