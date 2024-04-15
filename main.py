@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 import os
 import dotenv
+import asqlite
 
 # cwdをこのファイルがある場所に移動
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -14,19 +15,26 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(
     intents=intents, command_prefix="shojin.",
-    allowed_mentions=discord.AllowedMentions.none()
+    allowed_mentions=discord.AllowedMentions.none(),
+    help_command=None
 )
 
 
 bot.owner_ids = [
-    866659388122202162,  # strawberry
     693025129806037003,  # yaakiyu
     850297484965576754,  # blueberry
 ]
 
 
+@bot.check
+async def is_command_available(ctx):
+    return ctx.author.id in bot.owner_ids or ctx.guild.id == 1173817847294734346
+
+
 @bot.event
 async def on_ready():
+    bot.conn = await asqlite.connect("users.db")
+
     await bot.load_extension("jishaku")
     for name in os.listdir("./cogs"):
         if not name.startswith((".", "_")):
@@ -49,4 +57,4 @@ async def on_error(interaction, error):
         await interaction.response.send_message("An error has occurred.", embed=embed)
 
 
-bot.run(token=os.getenv("SHOJIN_BOT_TOKEN"))
+bot.run(token=os.getenv("TOKEN"))

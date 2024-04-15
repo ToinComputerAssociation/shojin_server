@@ -46,9 +46,9 @@ class ReNotifCache:
 
     @tasks.loop(seconds=1)
     async def garbage_collection(self):
-        "再ACを確認してから30分以上経ったものを削除する。"
+        "再ACを確認してから12時間以上経ったものを削除する。"
         for k, v in self.submit_ids.items():
-            if time.time() - v > 1800:
+            if time.time() - v > 43200:
                 del self.submit_ids[k]
 
     def append(self, item: int) -> None:
@@ -145,7 +145,7 @@ class Shojin(commands.Cog):
             # 点数更新&通知
             if new_ac:
                 await self.user_score_update(user_id, new_ac)
-        self.last_allget_time = int(time.time()) - 14400
+        self.last_allget_time = int(time.time()) - 86400
         with open("data/last_allget_time.txt", mode="w") as f:
             f.write(str(self.last_allget_time))
 
