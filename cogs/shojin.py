@@ -6,8 +6,7 @@ import asyncio
 from typing import TypedDict, NotRequired
 import datetime
 import time
-import os
-import json
+import utils
 
 
 class Problem(TypedDict):
@@ -26,21 +25,9 @@ class Problem(TypedDict):
     is_experimental: bool
 
 
-class Settings(TypedDict):
-    renotif: bool
-
-
-class User(TypedDict):
-    score: float
-    rating: int
-    discord_id: int
-    settings: Settings
-    solve_count: int
-
-
 class ReNotifCache:
     "再AC通知用に、一時的に提出のデータを保管するためのクラス"
-    
+
     def __init__(self, submit_ids: list[int]):
         self.submit_ids = {submit_id: time.time() for submit_id in submit_ids}
 
@@ -63,7 +50,7 @@ class ReNotifCache:
 
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
-    users: dict[str, User]
+    users: dict
     diffdic: dict[str, int]
     NOTICE_CHANNEL_ID = 1173817847294734349
     SHOULD_REGISTER_MESSAGE = ("あなたはユーザー登録をしていません。\n"
@@ -75,22 +62,15 @@ class Shojin(commands.Cog):
 
     async def cog_load(self):
         "コグのロード時の動作"
-        with open("data/scores.json", mode="r") as f:
-            self.users = json.load(f)
-        with open("data/submissions.json", mode="r") as f:
-            self.submissions = json.load(f)
-        with open("data/last_allget_time.txt", mode="r") as f:
-            self.last_allget_time = int(f.read())
-        with open("data/difficulty_dictionary.json", mode="r") as f:
-            self.diffdic = json.load(f)
+        async with self.bot.conn.cursor() as cursor:
+            await cursor.execute("SELECT * FROM Users;")
+            self.users = utils.make_users(await cursor.fetchall())
+            await cursor.execute("SELECT * FROM Submissions;")
+            self.submissions = utils.make_submissions(await cursor.fetchall())
+            await cursor.execute("SELECT * FROM Diffdic;")
+            self.diffdic = utils.make_diffdic(await cursor.fetchall())
         print("Getting all submissions and update...")
         await self.update_rating()
-        # 再AC通知のかぶり防止のため全ユーザーの直近30分のAC記録をキャッシュにぶち込んでおく
-        for user_id in self.users.keys():
-            submits = await self._get_30_minutes_submissions(user_id)
-            for i in submits:
-                if i["result"] == "AC":
-                    self.renotifcache.append(i["id"])
 
         self.score_calc.start()
         self.update_rating.start()
@@ -167,7 +147,7 @@ class Shojin(commands.Cog):
         # 新規ACを返す
         return new_ac
 
-    async def user_score_update(self, user_id, problems, re_ac_problems=[]):
+    async def user_score_update(self, user_id, problems):
         "指定されたユーザーのスコアを加算し、通知する。"
         channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
         assert isinstance(channel, discord.TextChannel)
@@ -194,20 +174,6 @@ class Shojin(commands.Cog):
                 else:
                     await channel.send(content)
 
-        if re_ac_problems:
-            messages = []
-            points = 0
-            for problem_id in re_ac_problems:
-                diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
-                contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
-                points += self.get_score(rate, diff)
-                messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
-            if len(messages) != 0:
-                await channel.send(
-                    f"{user_id}(rate:{rate})が{', '.join(messages)}を再ACしました！\n"
-                    f"(想定獲得スコア：{points:.3f})"
-                )
-
     async def get_rating(self, user_id, session):
         "ユーザーのレートを取得する。(AtCoderのサイトにアクセスする。)"
         response = await session.get(f"https://atcoder.jp/users/{user_id}/history/json")
@@ -233,7 +199,7 @@ class Shojin(commands.Cog):
             rating = await self.get_rating(user_id, session)
 
         self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating, "solve_count": 0}
-        self.users[user_id]["settings"] = Settings({"renotif": False})
+        self.users[user_id]["settings"] = {"renotif": False}
         await self.update_user_submissions(user_id)
         await ctx.reply("登録しました。")
 
@@ -333,26 +299,6 @@ class Shojin(commands.Cog):
                 await asyncio.sleep(5)
         await self.get_problems_data()
         await self.update_all_submissions()
-        self.save_data()
-
-    def save_data(self):
-        print("[log] Saving Data...")
-        with open("data/submissions.json", mode="w") as f:
-            json.dump(self.submissions, f)
-        with open("data/scores.json", mode="w") as f:
-            json.dump(self.users, f)
-        # バックアップをとる。
-        today = datetime.date.today()
-        with open(f"data/backup/{today.strftime(r'%Y%m%d')}.json", mode="w") as f:
-            json.dump(self.submissions, f)
-        with open(f"data/backup/{today.strftime(r'%Y%m%d')}_users.json", mode="w") as f:
-            json.dump(self.users, f)
-        weekago = today - datetime.timedelta(days=7)
-        # 7日で自動削除
-        if os.path.isfile(f"data/backup/{weekago.strftime(r'%Y%m%d')}.json"):
-            os.remove(f"data/backup/{weekago.strftime(r'%Y%m%d')}.json")
-        if os.path.isfile(f"data/backup/{weekago.strftime(r'%Y%m%d')}_users.json"):
-            os.remove(f"data/backup/{weekago.strftime(r'%Y%m%d')}_users.json")
 
 
 async def setup(bot):

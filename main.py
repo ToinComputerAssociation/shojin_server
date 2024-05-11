@@ -33,8 +33,24 @@ async def is_command_available(ctx):
 
 @bot.event
 async def on_ready():
-    bot.conn = await asqlite.connect("users.db")
-
+    bot.conn = await asqlite.connect("data.db", isolation_level=None)  # autocommit
+    async with bot.conn.cursor() as cursor:
+        await cursor.execute(
+            """CREATE TABLE IF NOT EXISTS Users(
+                id BIGINT PRIMARY KEY NOT NULL, score REAL, atcoder_id TEXT UNIQUE,
+                solve_count BIGINT, rating INTEGER
+            );"""
+        )
+        await cursor.execute(
+            """CREATE TABLE IF NOT EXISTS Submissions(
+                atcoder_id TEXT, problem_id TEXT, last_ac BIGINT
+            ) PRIMARY KEY (atcoder_id, problem_id);"""
+        )
+        await cursor.execute(
+            """CREATE TABLE IF NOT EXISTS Diffdic(
+                problem_id TEXT, difficulty INTEGER
+            );"""
+        )
     await bot.load_extension("jishaku")
     for name in os.listdir("./cogs"):
         if not name.startswith((".", "_")):
