@@ -23,9 +23,8 @@ def make_submissions(data) -> dict[str, dict[str, int]]:
     "生のSQLデータからsubmissionsに対応するdictを返します。"
     ret = {}
     for i in data:
-        ret[i[0]].setdefault({})
-        ret[i[0]][i[1]].setdefault(0)
-        ret[i[0]][i[1]] += 1
+        ret.setdefault(i[0], {})
+        ret[i[0]][i[1]] = i[2]
     return ret
 
 def make_diffdic(data) -> dict[str, int]:

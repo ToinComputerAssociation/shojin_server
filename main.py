@@ -43,8 +43,9 @@ async def on_ready():
         )
         await cursor.execute(
             """CREATE TABLE IF NOT EXISTS Submissions(
-                atcoder_id TEXT, problem_id TEXT, last_ac BIGINT
-            ) PRIMARY KEY (atcoder_id, problem_id);"""
+                atcoder_id TEXT, problem_id TEXT, last_ac BIGINT,
+                PRIMARY KEY (atcoder_id, problem_id)
+            );"""
         )
         await cursor.execute(
             """CREATE TABLE IF NOT EXISTS Diffdic(

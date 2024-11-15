@@ -50,7 +50,7 @@ class ReNotifCache:
 
 class Shojin(commands.Cog):
     problems_json: dict[str, Problem]
-    users: dict
+    users: dict[int, utils.User]
     diffdic: dict[str, int]
     NOTICE_CHANNEL_ID = 1173817847294734349
     SHOULD_REGISTER_MESSAGE = ("あなたはユーザー登録をしていません。\n"
@@ -69,6 +69,8 @@ class Shojin(commands.Cog):
             self.submissions = utils.make_submissions(await cursor.fetchall())
             await cursor.execute("SELECT * FROM Diffdic;")
             self.diffdic = utils.make_diffdic(await cursor.fetchall())
+        with open("data/last_allget_time.txt", mode="r") as f:
+            self.last_allget_time = int(f.read())
         print("Getting all submissions and update...")
         await self.update_rating()
 
@@ -120,34 +122,48 @@ class Shojin(commands.Cog):
     async def update_all_submissions(self):
         "登録されたすべてのユーザーのデータをアップデートし、更新があれば通知する。"
         print("[log] fetching all submissions...")
-        for user_id in self.users.keys():
-            new_ac = await self.update_user_submissions(user_id)
-            # 点数更新&通知
-            if new_ac:
-                await self.user_score_update(user_id, new_ac)
+        async with self.bot.conn.cursor() as cursor:
+            for user_id in self.users.keys():
+                new_ac = await self.update_user_submissions(user_id, cursor)
+                # 点数更新&通知
+                if new_ac:
+                    await self.user_score_update(user_id, new_ac)
         self.last_allget_time = int(time.time()) - 86400
         with open("data/last_allget_time.txt", mode="w") as f:
             f.write(str(self.last_allget_time))
 
-    async def update_user_submissions(self, user_id: str) -> list[str]:
+    async def update_user_submissions(self, discord_user_id: int, cursor, register=False) -> list[str]:
         "指定されたユーザーのデータを全取得して、新規ACの更新をする。"
-        all_subs = await self._get_all_submissions(user_id)
+        user_id = self.users[discord_user_id]["atcoder_id"]
+        all_subs = await self._get_all_submissions(user_id, 0 if register else None)
         all_ac_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
-        all_ac_problems = set([i["problem_id"] for i in all_ac_subs])
-        if user_id not in self.submissions:
-            self.submissions[user_id] = {k: k in all_ac_problems for k in self.problems_json.keys()}
-            return False
 
         new_ac = []
-        for problem_id in all_ac_problems:
-            if not self.submissions[user_id].get(problem_id, False):
+        for sub in all_ac_subs:
+            problem_id = sub["problem_id"]
+            ac_time = sub["epoch_second"]
+
+            if problem_id not in self.submissions[user_id]:
+                self.submissions[user_id][problem_id] = ac_time
                 new_ac.append(problem_id)
-                self.submissions[user_id][problem_id] = True
-                self.users[user_id]["solve_count"] += 1
+                await cursor.execute(
+                    "INSERT INTO Submissions VALUES (?, ?, ?);",
+                    (user_id, problem_id, ac_time)
+                )
+            elif ac_time > self.submissions[user_id][problem_id]:
+                if self.submissions[user_id][problem_id] == 0:
+                    new_ac.append(problem_id)
+                self.submissions[user_id][problem_id] = ac_time
+                await cursor.execute(
+                    "UPDATE Submissions SET last_ac=? WHERE atcoder_id=? AND problem_id=?;",
+                    (ac_time, user_id, problem_id)
+                )
+
+        self.users[discord_user_id]["solve_count"] += len(new_ac)
         # 新規ACを返す
         return new_ac
 
-    async def user_score_update(self, user_id, problems):
+    async def user_score_update(self, user_id: int, problems: list):
         "指定されたユーザーのスコアを加算し、通知する。"
         channel = self.bot.get_channel(self.NOTICE_CHANNEL_ID)
         assert isinstance(channel, discord.TextChannel)
@@ -167,14 +183,21 @@ class Shojin(commands.Cog):
                 self.users[user_id]["score"] += point
                 messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
             after = self.users[user_id]["score"]
-            content = f"{user_id}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
+            user_name = self.users[user_id]["atcoder_id"]
+            content = f"{user_name}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
             if len(messages) != 0:
                 if len(content) > 2000:
-                    await channel.send(f"{user_id}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
+                    await channel.send(f"{user_name}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
                 else:
                     await channel.send(content)
+            # データ保存
+            async with self.bot.conn.cursor() as cursor:
+                await cursor.execute(
+                    "UPDATE Users SET score=?, solve_count=? WHERE id=?;",
+                    (after, self.users[user_id]["solve_count"], user_id)
+                )
 
-    async def get_rating(self, user_id, session):
+    async def get_rating(self, user_id: str, session):
         "ユーザーのレートを取得する。(AtCoderのサイトにアクセスする。)"
         response = await session.get(f"https://atcoder.jp/users/{user_id}/history/json")
         jsonData = await response.json()
@@ -185,23 +208,30 @@ class Shojin(commands.Cog):
         return pow(2, (problem_diff - user_rate) / 400) * (1000 + max(0, problem_diff))
 
     def get_user_from_discord(self, discord_id: int):
-        for user_id in self.users.keys():
-            if self.users[user_id]["discord_id"] == discord_id:
-                return user_id
+        if discord_id in self.users:
+            return self.users[discord_id]["atcoder_id"]
         return False
 
     @commands.hybrid_command(aliases=["re"], description="精進通知をオンにします。")
     @app_commands.describe(user_id="AtCoderのユーザーID")
     async def register(self, ctx: commands.Context, user_id: str):
-        if user_id in self.users:
+        if ctx.author.id in self.users:
+            return await ctx.reply("あなたは登録済みです。")
+        if user_id in [x["atcoder_id"] for x in self.users.values()]:
             return await ctx.reply("このAtCoderユーザーは登録済みです。")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             rating = await self.get_rating(user_id, session)
 
-        self.users[user_id] = {"score": 0, "discord_id": ctx.author.id, "rating": rating, "solve_count": 0}
-        self.users[user_id]["settings"] = {"renotif": False}
-        await self.update_user_submissions(user_id)
-        await ctx.reply("登録しました。")
+        msg = await ctx.reply("登録しています...(この操作は数分かかる場合があります)")
+        self.users[ctx.author.id] = {"score": 0, "atcoder_id": user_id, "rating": rating, "solve_count": 0}
+        self.submissions[user_id] = {}
+        async with self.bot.conn.cursor() as cursor:
+            await self.update_user_submissions(ctx.author.id, cursor, register=True)
+            await cursor.execute(
+                "INSERT INTO Users VALUES (?, ?, ?, ?, ?)",
+                (ctx.author.id, 0, user_id, 0, rating)
+            )
+        await msg.edit(content="登録しました。")
 
     @commands.hybrid_command(description="現在のスコアを確認します。")
     async def status(self, ctx: commands.Context, user: discord.User = commands.Author):
@@ -256,14 +286,13 @@ class Shojin(commands.Cog):
             t = ["オフ", "オン"][int(self.users[user_id]["settings"]["renotif"])]
             await ctx.send("あなたの設定状況\n- 再ACの通知(`shojin.settings renotif`)：" + t)
 
-    @settings.command(description="再ACの通知のオンオフを切り替えます")
-    async def renotif(self, ctx: commands.Context, onoff: bool | None = None):
-        user_id = self.get_user_from_discord(ctx.author.id)
-        if not user_id:
+    @settings.command(description="AC通知のオンオフを切り替えます")
+    async def notif(self, ctx: commands.Context, onoff: bool | None = None):
+        if ctx.author.id not in self.users:
             return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
         if onoff is None:  # オンオフが指定されてなければ今の設定の反対にする
-            onoff = not self.users[user_id]["settings"]["renotif"]
-        self.users[user_id]["settings"]["renotif"] = onoff
+            onoff = not self.users[ctx.author.id]["notif_setting"]
+        self.users[ctx.author.id]["notif_setting"] = onoff
         t = ["オフ", "オン"][int(onoff)]
         await ctx.send(f"`{t}`に設定しました。")
 
@@ -275,8 +304,11 @@ class Shojin(commands.Cog):
             new_ac = []
             re_ac = set()
             for sub in submissions:
+                if isinstance(sub, str):
+                    print(sub)
+                    continue
                 if sub["result"] == "AC":
-                    if sub["result"] not in self.problems_json:
+                    if sub["problem_id"] not in self.problems_json:
                         await self.get_problems_data()
                     if not self.submissions[user_id].get(sub["problem_id"], False):
                         # First AC
@@ -287,18 +319,26 @@ class Shojin(commands.Cog):
                     if self.users[user_id]["settings"]["renotif"] and not self.renotifcache.get(sub["id"]):
                         re_ac.add(sub["problem_id"])
                         self.renotifcache.append(sub["id"])
-            await self.user_score_update(user_id, new_ac, list(re_ac))
+            await self.user_score_update(user_id, new_ac)
 
     @tasks.loop(time=datetime.time(15, 0))
     async def update_rating(self):
         print("[log] Update users rating...")
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             for user_id in self.users.keys():
-                rating = await self.get_rating(user_id, session)
-                self.users[user_id]["rating"] = rating
+                rating = await self.get_rating(self.users[user_id]["atcoder_id"], session)
+                if self.users[user_id]["rating"] != rating:
+                    self.users[user_id]["rating"] = rating
+                    # データ保存
+                    async with self.bot.conn.cursor() as cursor:
+                        await cursor.execute(
+                            "UPDATE Users rating = ? WHERE id = ?",
+                            (rating, user_id)
+                        )
                 await asyncio.sleep(5)
         await self.get_problems_data()
         await self.update_all_submissions()
+        await self.bot.conn.commit()
 
 
 async def setup(bot):
