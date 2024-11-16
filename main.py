@@ -49,7 +49,7 @@ async def on_ready():
         )
         await cursor.execute(
             """CREATE TABLE IF NOT EXISTS Diffdic(
-                problem_id TEXT, difficulty INTEGER
+                problem_id TEXT PRIMARY KEY NOT NULL, difficulty INTEGER
             );"""
         )
     await bot.load_extension("jishaku")
