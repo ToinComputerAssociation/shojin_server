@@ -182,6 +182,10 @@ class Shojin(commands.Cog):
                 point = self.get_score(rate, diff)
                 self.users[user_id]["score"] += point
                 messages.append(f"[{problem_id}](<https://atcoder.jp/contests/{contest_id}/tasks/{problem_id}>)(diff:{diff})")
+            
+            if not self.users[user_id]["notif_setting"]:
+                return
+            # メッセージの用意
             after = self.users[user_id]["score"]
             user_name = self.users[user_id]["atcoder_id"]
             content = f"{user_name}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
@@ -223,34 +227,37 @@ class Shojin(commands.Cog):
             rating = await self.get_rating(user_id, session)
 
         msg = await ctx.reply("登録しています...(この操作は数分かかる場合があります)")
-        self.users[ctx.author.id] = {"score": 0, "atcoder_id": user_id, "rating": rating, "solve_count": 0}
+        self.users[ctx.author.id] = {
+            "score": 0, "atcoder_id": user_id, "rating": rating, "solve_count": 0,
+            "notif_setting": True
+        }
         self.submissions[user_id] = {}
         async with self.bot.conn.cursor() as cursor:
             await self.update_user_submissions(ctx.author.id, cursor, register=True)
             await cursor.execute(
-                "INSERT INTO Users VALUES (?, ?, ?, ?, ?)",
-                (ctx.author.id, 0, user_id, 0, rating)
+                "INSERT INTO Users VALUES (?, ?, ?, ?, ?, ?)",
+                (ctx.author.id, 0, user_id, 0, rating, True)
             )
         await msg.edit(content="登録しました。")
 
     @commands.hybrid_command(description="現在のスコアを確認します。")
     async def status(self, ctx: commands.Context, user: discord.User = commands.Author):
-        user_id = self.get_user_from_discord(user.id)
-        if not user_id:
+        if user.id not in self.users:
             if user != ctx.author:
                 return await ctx.send("この人はユーザー登録をしていません。")
             return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
         await ctx.send(
-            f"{user.mention}のデータ\nAtCoder ID：{user_id}\nbot内で保存されている"
-            f"レーティング：{self.users[user_id]['rating']}\n(今シーズン)スコア：{self.users[user_id]['score']}"
-            f"\n(今シーズン)解いた問題数: {self.users[user_id]['solve_count']}",
+            f"{user.mention}のデータ\nAtCoder ID：{user.id}\nbot内で保存されている"
+            f"レーティング：{self.users[user.id]['rating']}\n(今シーズン)スコア：{self.users[user.id]['score']}"
+            f"\n(今シーズン)解いた問題数: {self.users[user.id]['solve_count']}",
             allowed_mentions=discord.AllowedMentions.none()
         )
 
     @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
     async def ranking(self, ctx: commands.Context, rank: str = "1"):
         points = [
-            (user_id, self.users[user_id]["score"], self.users[user_id]["solve_count"])
+            (self.users[user_id]["atcoder_id"], self.users[user_id]["score"],
+             self.users[user_id]["solve_count"])
             for user_id in self.users.keys()
         ]
         points.sort(key=lambda i: i[1], reverse=True)
@@ -268,10 +275,12 @@ class Shojin(commands.Cog):
                 if points[i][0] == user_id:
                     rank = i
         else:
-            rank = min(int(rank), len(points)-4) - 1
+            rank = max(0, min(int(rank), len(points)-4) - 1)
         messages = []
-        for i in range(min(5, len(self.users)-rank)):
+        for i in range(5):
             now = rank + i
+            if now >= len(points):
+                break
             messages.append(
                 f"{now+1}位：**`{points[now][0]}`** (score: `{points[now][1]:.3f}` 解いた問題数: {points[now][2]})"
             )
@@ -280,11 +289,10 @@ class Shojin(commands.Cog):
     @commands.hybrid_group(description="設定の変更をします。")
     async def settings(self, ctx: commands.Context):
         if not ctx.invoked_subcommand:
-            user_id = self.get_user_from_discord(ctx.author.id)
-            if not user_id:
+            if ctx.author.id not in self.users:
                 return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
-            t = ["オフ", "オン"][int(self.users[user_id]["settings"]["renotif"])]
-            await ctx.send("あなたの設定状況\n- 再ACの通知(`shojin.settings renotif`)：" + t)
+            t = ["オフ", "オン"][int(self.users[ctx.author.id]["notif_setting"])]
+            await ctx.send("あなたの設定状況\n- AC通知(`shojin.settings notif`)：" + t)
 
     @settings.command(description="AC通知のオンオフを切り替えます")
     async def notif(self, ctx: commands.Context, onoff: bool | None = None):
@@ -293,6 +301,11 @@ class Shojin(commands.Cog):
         if onoff is None:  # オンオフが指定されてなければ今の設定の反対にする
             onoff = not self.users[ctx.author.id]["notif_setting"]
         self.users[ctx.author.id]["notif_setting"] = onoff
+        async with self.bot.conn.cursor() as cursor:
+            await cursor.execute(
+                "UPDATE Users SET notif_setting=? WHERE id=?",
+                (onoff, ctx.author.id)
+            )
         t = ["オフ", "オン"][int(onoff)]
         await ctx.send(f"`{t}`に設定しました。")
 

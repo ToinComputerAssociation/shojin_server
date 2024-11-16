@@ -38,7 +38,7 @@ async def on_ready():
         await cursor.execute(
             """CREATE TABLE IF NOT EXISTS Users(
                 id BIGINT PRIMARY KEY NOT NULL, score REAL, atcoder_id TEXT UNIQUE,
-                solve_count BIGINT, rating INTEGER
+                solve_count BIGINT, rating INTEGER, notif_setting BOOLEAN Default 1
             );"""
         )
         await cursor.execute(

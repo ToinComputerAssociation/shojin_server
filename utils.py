@@ -6,6 +6,7 @@ class User(TypedDict):
     rating: int
     atcoder_id: str
     solve_count: int
+    notif_setting: bool
 
 
 def make_users(data) -> dict[int, User]:
@@ -14,7 +15,8 @@ def make_users(data) -> dict[int, User]:
     for i in data:
         ret[int(i[0])] = User(
             score=float(i[1]), rating=int(i[4]),
-            atcoder_id=str(i[2]), solve_count=int(i[3])
+            atcoder_id=str(i[2]), solve_count=int(i[3]),
+            notif_setting=bool(i[4])
         )
     return ret
 
