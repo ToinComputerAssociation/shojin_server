@@ -328,10 +328,6 @@ class Shojin(commands.Cog):
                         self.submissions[user_id][sub["problem_id"]] = True
                         self.users[user_id]["solve_count"] += 1
                         new_ac.append(sub["problem_id"])
-                        self.renotifcache.append(sub["id"])
-                    if self.users[user_id]["settings"]["renotif"] and not self.renotifcache.get(sub["id"]):
-                        re_ac.add(sub["problem_id"])
-                        self.renotifcache.append(sub["id"])
             await self.user_score_update(user_id, new_ac)
 
     @tasks.loop(time=datetime.time(15, 0))
@@ -345,7 +341,7 @@ class Shojin(commands.Cog):
                     # データ保存
                     async with self.bot.conn.cursor() as cursor:
                         await cursor.execute(
-                            "UPDATE Users rating = ? WHERE id = ?",
+                            "UPDATE Users SET rating = ? WHERE id = ?",
                             (rating, user_id)
                         )
                 await asyncio.sleep(5)
