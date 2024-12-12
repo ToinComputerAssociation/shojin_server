@@ -309,6 +309,9 @@ class Shojin(commands.Cog):
             new_ac = []
             re_ac = set()
             for sub in submissions:
+                if isinstance(sub, str):
+                    print(sub)
+                    continue
                 if sub["result"] == "AC":
                     if sub["result"] not in self.problems_json:
                         await self.get_problems_data()
