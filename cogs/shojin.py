@@ -216,7 +216,7 @@ class Shojin(commands.Cog):
 
     def get_score(self, user_rate, problem_diff):
         "ユーザーのレートと問題のdifficultyから獲得するポイントを計算する。"
-        return pow(2, (problem_diff - user_rate) / 400) * (1000 + max(0, problem_diff)/3)
+        return pow(2, (problem_diff - user_rate) / 400) * (1000 + max(0, problem_diff)/2)
 
     def get_user_from_discord(self, discord_id: int):
         for user_id in self.users.keys():
