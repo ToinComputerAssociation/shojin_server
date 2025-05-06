@@ -50,7 +50,7 @@ class Develop(commands.Cog):
         async with self.bot.conn.cursor() as cursor:
             await cursor.execute(content)
             result = await cursor.fetchall()
-        await ctx.send("Ok, result:\n" + str(result))
+        await ctx.send("Ok, result:\n```\n" + "\n".join(" ".join(str(t) for t in x) for x in result) + "\n```")
 
 
 async def setup(bot):
