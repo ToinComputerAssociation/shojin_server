@@ -221,14 +221,20 @@ class Shojin(commands.Cog):
     @app_commands.describe(user_id="AtCoderのユーザーID")
     async def register(self, ctx: commands.Context, user_id: str):
         if ctx.author.id in self.users:
-            return await ctx.reply("あなたは登録済みです。")
+            embed = discord.Embed(title="エラー", description="あなたは登録済みです。", color=discord.Color.red())
+            return await ctx.reply(embed=embed)
         if user_id in [x["atcoder_id"] for x in self.users.values()]:
-            return await ctx.reply("このAtCoderユーザーは登録済みです。")
+            embed = discord.Embed(title="エラー", description="このAtCoderユーザーは登録済みです。", color=discord.Color.red())
+            return await ctx.reply(embed=embed)
         await ctx.typing()
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
-            rating = await self.get_rating(user_id, session)
+            try:
+                rating = await self.get_rating(user_id, session)
+            except Exception:
+                embed = discord.Embed(title="エラー", description=f"{user_id} というユーザーは存在しないか、AtCoderサーバーがダウンしています。", color=discord.Color.red())
+                return await ctx.reply(embed=embed)
 
-        msg = await ctx.reply("登録しています...(この操作は数分かかる場合があります)")
+        msg = await ctx.reply(embed=discord.Embed(title="登録中", description="登録しています...(この操作は数分かかる場合があります)", color=discord.Color.blue()))
         self.users[ctx.author.id] = {
             "score": 0, "atcoder_id": user_id, "rating": rating, "solve_count": 0,
             "notif_setting": True
@@ -240,20 +246,25 @@ class Shojin(commands.Cog):
                 "INSERT INTO Users VALUES (?, ?, ?, ?, ?, ?)",
                 (ctx.author.id, 0, user_id, 0, rating, True)
             )
-        await msg.edit(content="登録しました。")
+        embed = discord.Embed(title="登録完了", description="登録しました。", color=discord.Color.green())
+        await msg.edit(embed=embed)
 
     @commands.hybrid_command(description="現在のスコアを確認します。")
     async def status(self, ctx: commands.Context, user: discord.User = commands.Author):
         if user.id not in self.users:
             if user != ctx.author:
-                return await ctx.send("この人はユーザー登録をしていません。")
-            return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
-        await ctx.send(
-            f"{user.mention}のデータ\nAtCoder ID：{user.id}\nbot内で保存されている"
-            f"レーティング：{self.users[user.id]['rating']}\n(今シーズン)スコア：{self.users[user.id]['score']}"
-            f"\n(今シーズン)解いた問題数: {self.users[user.id]['solve_count']}",
-            allowed_mentions=discord.AllowedMentions.none()
-        )
+                embed = discord.Embed(title="エラー", description="この人はユーザー登録をしていません。", color=discord.Color.red())
+                return await ctx.send(embed=embed)
+            embed = discord.Embed(title="エラー", description=self.SHOULD_REGISTER_MESSAGE, color=discord.Color.red())
+            return await ctx.send(embed=embed)
+        
+        embed = discord.Embed(title=f"{user.display_name}のデータ", color=discord.Color.blue())
+        embed.add_field(name="AtCoder ID", value=user.id, inline=False)
+        embed.add_field(name="bot内で保存されているレーティング", value=self.users[user.id]['rating'], inline=False)
+        embed.add_field(name="(今シーズン)スコア", value=f"{self.users[user.id]['score']:.3f}", inline=False)
+        embed.add_field(name="(今シーズン)解いた問題数", value=self.users[user.id]['solve_count'], inline=False)
+        
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
 
     @commands.hybrid_command(description="精進ポイントのランキングを表示します。")
     async def ranking(self, ctx: commands.Context, rank: str = "1"):
@@ -265,19 +276,23 @@ class Shojin(commands.Cog):
         points.sort(key=lambda i: i[1], reverse=True)
         if not rank.isdigit():
             if not self.users.get(rank, False):
-                return await ctx.send("このユーザーは登録されていません。")
+                embed = discord.Embed(title="エラー", description="このユーザーは登録されていません。", color=discord.Color.red())
+                return await ctx.send(embed=embed)
             for i in range(len(points)):
                 if points[i][0] == rank:
                     rank = i
         elif int(rank) < 1:
             user_id = self.get_user_from_discord(ctx.author.id)
             if not user_id:
-                return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
+                embed = discord.Embed(title="エラー", description=self.SHOULD_REGISTER_MESSAGE, color=discord.Color.red())
+                return await ctx.send(embed=embed)
             for i in range(len(points)):
                 if points[i][0] == user_id:
                     rank = i
         else:
-            rank = max(0, min(int(rank), len(points)-4) - 1)
+            rank = max(0, min(int(rank), len(points)-4, len(points) >=4) - 1)
+        
+        embed = discord.Embed(title="ランキング", color=discord.Color.blue())
         messages = []
         for i in range(5):
             now = rank + i
@@ -286,20 +301,25 @@ class Shojin(commands.Cog):
             messages.append(
                 f"{now+1}位：**`{points[now][0]}`** (score: `{points[now][1]:.3f}` 解いた問題数: {points[now][2]})"
             )
-        await ctx.send("\n".join(messages))
+        embed.description = "\\n".join(messages)
+        await ctx.send(embed=embed)
 
     @commands.hybrid_group(description="設定の変更をします。")
     async def settings(self, ctx: commands.Context):
         if not ctx.invoked_subcommand:
             if ctx.author.id not in self.users:
-                return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
+                embed = discord.Embed(title="エラー", description=self.SHOULD_REGISTER_MESSAGE, color=discord.Color.red())
+                return await ctx.send(embed=embed)
             t = ["オフ", "オン"][int(self.users[ctx.author.id]["notif_setting"])]
-            await ctx.send("あなたの設定状況\n- AC通知(`shojin.settings notif`)：" + t)
+            embed = discord.Embed(title="あなたの設定状況", color=discord.Color.blue())
+            embed.add_field(name="AC通知 (`shojin.settings notif`)", value=t, inline=False)
+            await ctx.send(embed=embed)
 
     @settings.command(description="AC通知のオンオフを切り替えます")
     async def notif(self, ctx: commands.Context, onoff: bool | None = None):
         if ctx.author.id not in self.users:
-            return await ctx.send(self.SHOULD_REGISTER_MESSAGE)
+            embed = discord.Embed(title="エラー", description=self.SHOULD_REGISTER_MESSAGE, color=discord.Color.red())
+            return await ctx.send(embed=embed)
         if onoff is None:  # オンオフが指定されてなければ今の設定の反対にする
             onoff = not self.users[ctx.author.id]["notif_setting"]
         self.users[ctx.author.id]["notif_setting"] = onoff
@@ -309,7 +329,8 @@ class Shojin(commands.Cog):
                 (onoff, ctx.author.id)
             )
         t = ["オフ", "オン"][int(onoff)]
-        await ctx.send(f"`{t}`に設定しました。")
+        embed = discord.Embed(title="設定変更完了", description=f"AC通知を`{t}`に設定しました。", color=discord.Color.green())
+        await ctx.send(embed=embed)
 
     @tasks.loop(seconds=600)
     async def score_calc(self):
