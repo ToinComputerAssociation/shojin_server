@@ -179,6 +179,8 @@ class Shojin(commands.Cog):
                 diff = self.diffdic.get(problem_id, None)
                 if diff is None:
                     diff = self.problems_json.get(problem_id, {}).get("difficulty", 400)
+                if diff is None:
+                    diff = 400
                 contest_id = self.problems_json.get(problem_id, {}).get("contest_id", None)
                 point = self.get_score(rate, diff)
                 self.users[user_id]["score"] += point
