@@ -45,6 +45,13 @@ class Develop(commands.Cog):
         cog.diffdic[problem_id] = diff
         await ctx.send(f"問題 {problem_id} にdiff {diff} を設定しました。")
 
+    @commands.command()
+    async def sql(self, ctx: commands.Context, *, content: str):
+        async with self.bot.conn.cursor() as cursor:
+            await cursor.execute(content)
+            result = await cursor.fetchall()
+        await ctx.send("Ok, result:\n" + str(result))
+
 
 async def setup(bot):
     await bot.add_cog(Develop(bot))

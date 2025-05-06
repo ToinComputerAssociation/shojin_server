@@ -136,7 +136,7 @@ class Shojin(commands.Cog):
         "指定されたユーザーのデータを全取得して、新規ACの更新をする。"
         user_id = self.users[discord_user_id]["atcoder_id"]
         all_subs = await self._get_all_submissions(user_id, 0 if register else None)
-        all_ac_subs = list(filter((lambda x: x["result"] == "AC"), all_subs))
+        all_ac_subs = list(filter((lambda x: isinstance(x, dict) and x.get("result") == "AC"), all_subs))
 
         new_ac = []
         for sub in all_ac_subs:
@@ -159,7 +159,8 @@ class Shojin(commands.Cog):
                     (ac_time, user_id, problem_id)
                 )
 
-        self.users[discord_user_id]["solve_count"] += len(new_ac)
+        if not register:
+            self.users[discord_user_id]["solve_count"] += len(new_ac)
         # 新規ACを返す
         return new_ac
 
@@ -223,6 +224,7 @@ class Shojin(commands.Cog):
             return await ctx.reply("あなたは登録済みです。")
         if user_id in [x["atcoder_id"] for x in self.users.values()]:
             return await ctx.reply("このAtCoderユーザーは登録済みです。")
+        await ctx.typing()
         async with aiohttp.ClientSession(loop=self.bot.loop) as session:
             rating = await self.get_rating(user_id, session)
 
@@ -315,7 +317,6 @@ class Shojin(commands.Cog):
         for user_id in self.users.keys():
             submissions = await self._get_30_minutes_submissions(user_id)
             new_ac = []
-            re_ac = set()
             for sub in submissions:
                 if isinstance(sub, str):
                     print(sub)

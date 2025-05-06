@@ -24,9 +24,9 @@ def make_users(data) -> dict[int, User]:
 def make_submissions(data) -> dict[str, dict[str, int]]:
     "生のSQLデータからsubmissionsに対応するdictを返します。"
     ret = {}
-    for i in data:
-        ret.setdefault(i[0], {})
-        ret[i[0]][i[1]] = i[2]
+    for user_id, problem_id, value in data:
+        ret.setdefault(user_id, {})
+        ret[user_id][problem_id] = value
     return ret
 
 def make_diffdic(data) -> dict[str, int]:
