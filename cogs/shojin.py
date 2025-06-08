@@ -189,12 +189,23 @@ class Shojin(commands.Cog):
             # メッセージの用意
             after = self.users[user_id]["score"]
             user_name = self.users[user_id]["atcoder_id"]
-            content = f"{user_name}(rate:{rate})が{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
+            
             if len(messages) != 0:
-                if len(content) > 2000:
-                    await channel.send(f"{user_name}(rate:{rate})が{len(messages)}問の問題をACしました！\n{content.splitlines()[-1]}")
+                embed = discord.Embed(
+                    title="AC通知",
+                    color=discord.Color.green()
+                )
+                embed.set_author(name=f"{user_name} (rate:{rate})")
+                
+                description = f"{', '.join(messages)}をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
+                
+                if len(description) > 4096: # Embedのdescriptionの文字数制限
+                    # 文字数が多い場合は、問題リストを省略
+                    embed.description = f"{len(messages)}問の問題をACしました！\nscore:{before:.3f} -> {after:.3f}(+{after - before:.3f})"
                 else:
-                    await channel.send(content)
+                    embed.description = description
+                
+                await channel.send(embed=embed)
             # データ保存
             async with self.bot.conn.cursor() as cursor:
                 await cursor.execute(
