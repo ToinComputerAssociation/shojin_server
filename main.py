@@ -23,6 +23,7 @@ bot = commands.Bot(
 bot.owner_ids = [
     693025129806037003,  # yaakiyu
     850297484965576754,  # blueberry
+    1090065554305462273, # yuubinnkyoku
 ]
 
 
